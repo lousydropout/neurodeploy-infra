@@ -1,9 +1,10 @@
-from typing import Dict, NamedTuple
+from typing import Dict, NamedTuple, Tuple
 from aws_cdk import (
     Duration,
     Stack,
     aws_apigateway as apigw,
     aws_sqs as sqs,
+    aws_s3 as s3,
     aws_lambda as lambda_,
     aws_dynamodb as dynamodb,
 )
@@ -16,20 +17,15 @@ class LambdaQueueTuple(NamedTuple):
     queue: sqs.Queue
 
 
-class DynamoPermission(Enum):
+class Permission(Enum):
     READ = "READ"
     WRITE = "WRITE"
     READ_WRITE = "READ_WRITE"
 
 
-_READ = DynamoPermission.READ
-_WRITE = DynamoPermission.WRITE
-_READ_WRITE = DynamoPermission.READ_WRITE
-
-
-class TablePermissionTuple(NamedTuple):
-    table: dynamodb.Table
-    permission: DynamoPermission
+_READ = Permission.READ
+_WRITE = Permission.WRITE
+_READ_WRITE = Permission.READ_WRITE
 
 
 class NdMainStack(Stack):
@@ -47,72 +43,79 @@ class NdMainStack(Stack):
         self.models: dynamodb.Table = self.import_dynamodb_table("Models")
         self.usage_logs: dynamodb.Table = self.import_dynamodb_table("UsageLogs")
 
+        # S3 bucket imports
+        self.models_bucket = s3.Bucket.from_bucket_name(
+            self, f"{prefix}_models", bucket_name=f"{prefix}-models"
+        )
+
         # API Gateway
         self.apigw_resources: Dict[str, apigw.Resource] = {}
         self.api = apigw.RestApi(self, f"{prefix}_api")
         POST_signup = self.add(
             "POST",
             "signup",
-            tables=[TablePermissionTuple(self.users, _READ_WRITE)],
+            tables=[(self.users, _READ_WRITE)],
             create_queue=True,
         )
         POST_signin = self.add(
             "POST",
             "signin",
             tables=[
-                TablePermissionTuple(self.users, _READ),
-                TablePermissionTuple(self.sessions, _READ_WRITE),
+                (self.users, _READ),
+                (self.sessions, _READ_WRITE),
             ],
         )
         GET_access_token = self.add(
             "GET",
             "access_token",
             tables=[
-                TablePermissionTuple(self.users, _READ_WRITE),
-                TablePermissionTuple(self.sessions, _READ_WRITE),
-                TablePermissionTuple(self.apis, _READ_WRITE),
-                TablePermissionTuple(self.models, _READ_WRITE),
-                TablePermissionTuple(self.usage_logs, _READ_WRITE),
+                (self.users, _READ_WRITE),
+                (self.sessions, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+                (self.usage_logs, _READ_WRITE),
             ],
         )
         POST_create_endpoint = self.add(
             "POST",
             "create_endpoint",
             tables=[
-                TablePermissionTuple(self.users, _READ_WRITE),
-                TablePermissionTuple(self.sessions, _READ_WRITE),
-                TablePermissionTuple(self.apis, _READ_WRITE),
-                TablePermissionTuple(self.models, _READ_WRITE),
-                TablePermissionTuple(self.usage_logs, _READ_WRITE),
+                (self.users, _READ_WRITE),
+                (self.sessions, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+                (self.usage_logs, _READ_WRITE),
             ],
         )
         POST_associate_ml_model = self.add(
             "POST",
             "associate_ml_model",
             tables=[
-                TablePermissionTuple(self.users, _READ_WRITE),
-                TablePermissionTuple(self.sessions, _READ_WRITE),
-                TablePermissionTuple(self.apis, _READ_WRITE),
-                TablePermissionTuple(self.models, _READ_WRITE),
-                TablePermissionTuple(self.usage_logs, _READ_WRITE),
+                (self.users, _READ_WRITE),
+                (self.sessions, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+                (self.usage_logs, _READ_WRITE),
             ],
         )
         GET_ml_model_upload = self.add(
             "GET",
             "ml_model_upload",
             tables=[
-                TablePermissionTuple(self.users, _READ_WRITE),
-                TablePermissionTuple(self.sessions, _READ_WRITE),
-                TablePermissionTuple(self.apis, _READ_WRITE),
-                TablePermissionTuple(self.models, _READ_WRITE),
-                TablePermissionTuple(self.usage_logs, _READ_WRITE),
+                (self.users, _READ_WRITE),
+                (self.sessions, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+                (self.usage_logs, _READ_WRITE),
             ],
+            buckets=[(self.models_bucket, _READ_WRITE)],
         )
 
     def create_lambda(
         self,
         id: str,
-        tables: list[TablePermissionTuple],
+        tables: list[Tuple[dynamodb.Table, Permission]] = None,
+        buckets: list[Tuple[s3.Bucket, Permission]] = None,
         queue: sqs.Queue = None,
     ) -> lambda_.Function:
         # environment variables for the lambda function
@@ -133,7 +136,7 @@ class NdMainStack(Stack):
         )
 
         # grant lambda function access to DynamoDB tables
-        for table, permission in tables:
+        for table, permission in tables or []:
             if permission == _READ:
                 table.grant_read_data(_lambda)
             elif permission == _WRITE:
@@ -141,13 +144,23 @@ class NdMainStack(Stack):
             else:
                 table.grant_full_access(_lambda)
 
+        # grant lambda function access to S3 buckets
+        for bucket, permission in buckets or []:
+            if permission == _READ:
+                bucket.grant_read(_lambda)
+            elif permission == _WRITE:
+                bucket.grant_write(_lambda)
+            else:
+                bucket.grant_read_write(_lambda)
+
         return _lambda
 
     def add(
         self,
         http_method: str,
         resource_name: str,
-        tables: list[TablePermissionTuple],
+        tables: list[Tuple[dynamodb.Table, Permission]] = None,
+        buckets: list[Tuple[s3.Bucket, Permission]] = None,
         create_queue: bool = False,
     ) -> LambdaQueueTuple:
         # create resource under self.api.root if it doesn't already exist
@@ -161,7 +174,7 @@ class NdMainStack(Stack):
         # create lambda
         _id = f"{resource_name}_{http_method}"
         _queue = sqs.Queue(self, resource_name) if create_queue else None
-        _lambda: lambda_.Function = self.create_lambda(_id, tables, _queue)
+        _lambda: lambda_.Function = self.create_lambda(_id, tables, buckets, _queue)
         if _queue:
             _queue.grant_send_messages(_lambda)
 
