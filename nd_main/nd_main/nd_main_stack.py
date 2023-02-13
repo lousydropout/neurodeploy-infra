@@ -8,11 +8,28 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
 )
 from constructs import Construct
+from enum import Enum
 
 
 class LambdaQueueTuple(NamedTuple):
     lambda_function: lambda_.Function
     queue: sqs.Queue
+
+
+class DynamoPermission(Enum):
+    READ = "READ"
+    WRITE = "WRITE"
+    READ_WRITE = "READ_WRITE"
+
+
+_READ = DynamoPermission.READ
+_WRITE = DynamoPermission.WRITE
+_READ_WRITE = DynamoPermission.READ_WRITE
+
+
+class TablePermissionTuple(NamedTuple):
+    table: dynamodb.Table
+    permission: DynamoPermission
 
 
 class NdMainStack(Stack):
@@ -33,30 +50,77 @@ class NdMainStack(Stack):
         # API Gateway
         self.apigw_resources: Dict[str, apigw.Resource] = {}
         self.api = apigw.RestApi(self, f"{prefix}_api")
-        signup = self.add("POST", "signup", tables=[self.users], create_queue=True)
-        signin = self.add("POST", "signin", tables=[self.users, self.sessions])
-        access_token = self.add(
+        POST_signup = self.add(
+            "POST",
+            "signup",
+            tables=[TablePermissionTuple(self.users, _READ_WRITE)],
+            create_queue=True,
+        )
+        POST_signin = self.add(
+            "POST",
+            "signin",
+            tables=[
+                TablePermissionTuple(self.users, _READ),
+                TablePermissionTuple(self.sessions, _READ_WRITE),
+            ],
+        )
+        GET_access_token = self.add(
             "GET",
             "access_token",
             tables=[
-                self.users,
-                self.sessions,
-                self.apis,
-                self.models,
-                self.usage_logs,
+                TablePermissionTuple(self.users, _READ_WRITE),
+                TablePermissionTuple(self.sessions, _READ_WRITE),
+                TablePermissionTuple(self.apis, _READ_WRITE),
+                TablePermissionTuple(self.models, _READ_WRITE),
+                TablePermissionTuple(self.usage_logs, _READ_WRITE),
+            ],
+        )
+        POST_create_endpoint = self.add(
+            "POST",
+            "create_endpoint",
+            tables=[
+                TablePermissionTuple(self.users, _READ_WRITE),
+                TablePermissionTuple(self.sessions, _READ_WRITE),
+                TablePermissionTuple(self.apis, _READ_WRITE),
+                TablePermissionTuple(self.models, _READ_WRITE),
+                TablePermissionTuple(self.usage_logs, _READ_WRITE),
+            ],
+        )
+        POST_associate_ml_model = self.add(
+            "POST",
+            "associate_ml_model",
+            tables=[
+                TablePermissionTuple(self.users, _READ_WRITE),
+                TablePermissionTuple(self.sessions, _READ_WRITE),
+                TablePermissionTuple(self.apis, _READ_WRITE),
+                TablePermissionTuple(self.models, _READ_WRITE),
+                TablePermissionTuple(self.usage_logs, _READ_WRITE),
+            ],
+        )
+        GET_ml_model_upload = self.add(
+            "GET",
+            "ml_model_upload",
+            tables=[
+                TablePermissionTuple(self.users, _READ_WRITE),
+                TablePermissionTuple(self.sessions, _READ_WRITE),
+                TablePermissionTuple(self.apis, _READ_WRITE),
+                TablePermissionTuple(self.models, _READ_WRITE),
+                TablePermissionTuple(self.usage_logs, _READ_WRITE),
             ],
         )
 
     def create_lambda(
         self,
         id: str,
-        tables: list[dynamodb.Table],
+        tables: list[TablePermissionTuple],
         queue: sqs.Queue = None,
     ) -> lambda_.Function:
-        env = {table.table_name: table.table_arn for table in tables}
+        # environment variables for the lambda function
+        env = {table.table_name: table.table_arn for (table, _) in tables}
         if queue:
             env["queue"] = queue.queue_url
 
+        # create lambda function
         _lambda = lambda_.Function(
             self,
             id,
@@ -68,8 +132,14 @@ class NdMainStack(Stack):
             timeout=Duration.seconds(29),
         )
 
-        for table in tables:
-            table.grant_full_access(_lambda)
+        # grant lambda function access to DynamoDB tables
+        for table, permission in tables:
+            if permission == _READ:
+                table.grant_read_data(_lambda)
+            elif permission == _WRITE:
+                table.grant_write_data(_lambda)
+            else:
+                table.grant_full_access(_lambda)
 
         return _lambda
 
@@ -77,7 +147,7 @@ class NdMainStack(Stack):
         self,
         http_method: str,
         resource_name: str,
-        tables: list[dynamodb.Table],
+        tables: list[TablePermissionTuple],
         create_queue: bool = False,
     ) -> LambdaQueueTuple:
         # create resource under self.api.root if it doesn't already exist
