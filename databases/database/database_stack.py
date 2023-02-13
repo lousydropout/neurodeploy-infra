@@ -1,4 +1,4 @@
-from aws_cdk import aws_dynamodb as dynamodb, RemovalPolicy, Stack
+from aws_cdk import aws_dynamodb as dynamodb, aws_s3 as s3, RemovalPolicy, Stack
 from constructs import Construct
 
 
@@ -7,6 +7,17 @@ class DatabaseStack(Stack):
         self, scope: Construct, construct_id: str, prefix: str, **kwargs
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        models_s3_bucket = s3.Bucket(
+            self,
+            f"{prefix}_models",
+            bucket_name=f"{prefix}-models",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            enforce_ssl=True,
+            versioned=True,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
 
         users = dynamodb.Table(
             self,
