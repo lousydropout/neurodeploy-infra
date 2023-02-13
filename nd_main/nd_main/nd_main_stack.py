@@ -45,7 +45,7 @@ class NdMainStack(Stack):
 
         # S3 bucket imports
         self.models_bucket = s3.Bucket.from_bucket_name(
-            self, f"{prefix}_models", bucket_name=f"{prefix}-models"
+            self, "models_bucket", bucket_name=f"{prefix}-models"
         )
 
         # API Gateway
