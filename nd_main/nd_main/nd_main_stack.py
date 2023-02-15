@@ -3,10 +3,12 @@ from aws_cdk import (
     Duration,
     Stack,
     aws_apigateway as apigw,
+    aws_certificatemanager as acm,
     aws_sqs as sqs,
     aws_s3 as s3,
     aws_lambda as lambda_,
     aws_dynamodb as dynamodb,
+    aws_route53 as route53,
 )
 from constructs import Construct
 from enum import Enum
@@ -30,11 +32,29 @@ _READ_WRITE = Permission.READ_WRITE
 
 class NdMainStack(Stack):
     def __init__(
-        self, scope: Construct, construct_id: str, prefix: str, **kwargs
+        self,
+        scope: Construct,
+        construct_id: str,
+        prefix: str,
+        domain_name: str,
+        **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         self.prefix = prefix
+
+        # DNS
+        dn_zone = route53.HostedZone.from_lookup(
+            self,
+            "HostedZone",
+            domain_name=domain_name,
+        )
+        main_cert = acm.Certificate(
+            self,
+            "Certificate",
+            domain_name=f"*.{domain_name}",
+            validation=acm.CertificateValidation.from_dns(dn_zone),
+        )
 
         # DynamoDB Table imports
         self.users: dynamodb.Table = self.import_dynamodb_table("Users")
@@ -50,7 +70,13 @@ class NdMainStack(Stack):
 
         # API Gateway
         self.apigw_resources: Dict[str, apigw.Resource] = {}
-        self.api = apigw.RestApi(self, f"{prefix}_api")
+        self.api = apigw.RestApi(
+            self,
+            id=f"{prefix}_api",
+            domain_name=apigw.DomainNameOptions(
+                domain_name=f"api.{domain_name}", certificate=main_cert
+            ),
+        )
         POST_signup = self.add(
             "POST",
             "signup",
