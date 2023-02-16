@@ -8,6 +8,7 @@ class DatabaseStack(Stack):
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        # S3 buckets
         models_s3_bucket = s3.Bucket(
             self,
             f"{prefix}_models",
@@ -19,6 +20,18 @@ class DatabaseStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
+        logs_s3_bucket = s3.Bucket(
+            self,
+            f"{prefix}_logs",
+            bucket_name=f"{prefix}-logs",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            enforce_ssl=True,
+            versioned=True,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        # DynamoDB tables
         users = dynamodb.Table(
             self,
             f"{prefix}_Users",
