@@ -140,7 +140,7 @@ class NdMainStack(Stack):
             buckets=[(self.models_bucket, _READ_WRITE)],
         )
 
-        # Add record to route53
+        # Add record to route53 pointing "api" subdomain to api gateway
         api_record = route53.ARecord(
             self,
             "ApiRecord",
