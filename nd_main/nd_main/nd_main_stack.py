@@ -84,6 +84,7 @@ class NdMainStack(Stack):
             tables=[(self.users, _READ_WRITE)],
             create_queue=True,
         )
+        POST_signup.lambda_function.add_environment("cert", main_cert.certificate_arn)
         POST_signin = self.add(
             "POST",
             "signin",
