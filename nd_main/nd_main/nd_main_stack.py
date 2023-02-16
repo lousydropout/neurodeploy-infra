@@ -9,6 +9,7 @@ from aws_cdk import (
     aws_lambda as lambda_,
     aws_dynamodb as dynamodb,
     aws_route53 as route53,
+    aws_route53_targets as targets,
 )
 from constructs import Construct
 from enum import Enum
@@ -44,7 +45,7 @@ class NdMainStack(Stack):
         self.prefix = prefix
 
         # DNS
-        dn_zone = route53.HostedZone.from_lookup(
+        nd_zone = route53.HostedZone.from_lookup(
             self,
             "HostedZone",
             domain_name=domain_name,
@@ -53,7 +54,7 @@ class NdMainStack(Stack):
             self,
             "Certificate",
             domain_name=f"*.{domain_name}",
-            validation=acm.CertificateValidation.from_dns(dn_zone),
+            validation=acm.CertificateValidation.from_dns(nd_zone),
         )
 
         # DynamoDB Table imports
@@ -137,6 +138,15 @@ class NdMainStack(Stack):
                 (self.usage_logs, _READ_WRITE),
             ],
             buckets=[(self.models_bucket, _READ_WRITE)],
+        )
+
+        # Add record to route53
+        api_record = route53.ARecord(
+            self,
+            "ApiRecord",
+            record_name=f"api.{domain_name}",
+            zone=nd_zone,
+            target=route53.RecordTarget.from_alias(targets.ApiGateway(self.api)),
         )
 
     def create_lambda(
