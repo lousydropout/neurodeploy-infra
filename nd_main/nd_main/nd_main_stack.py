@@ -76,6 +76,7 @@ class NdMainStack(Stack):
             domain_name=apigw.DomainNameOptions(
                 domain_name=f"api.{domain_name}", certificate=main_cert
             ),
+            endpoint_types=[apigw.EndpointType.REGIONAL],
         )
         POST_signup = self.add(
             "POST",
