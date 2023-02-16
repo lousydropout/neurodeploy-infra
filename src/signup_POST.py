@@ -4,11 +4,16 @@ from hashlib import sha256
 from uuid import uuid4 as uuid
 import boto3
 
+
 UTF_8 = "utf-8"
 
-
-_USERS = os.environ["neurodeploy_Users"]
+_USERS_TABLE_NAME = "neurodeploy_Users"
+_USERS = os.environ[_USERS_TABLE_NAME]
 _QUEUE = os.environ["queue"]
+
+dynamodb_client = boto3.client("dynamodb")
+dynamodb = boto3.resource("dynamodb")
+_USERS_TABLE = dynamodb.Table(_USERS_TABLE_NAME)
 
 
 def parse(event: dict) -> dict:
@@ -46,8 +51,23 @@ def parse(event: dict) -> dict:
 
 
 def add_user_to_users_table(username: str, payload: dict):
-    pass
-    # if user already exists, throw exception
+    try:
+        record = {"pk": f"username::{username}", **payload}
+        _USERS_TABLE.put_item(
+            Item=record,
+            ConditionExpression="attribute_not_exists(pk)",
+        )
+    except dynamodb_client.exceptions.ConditionalCheckFailedException:
+        raise Exception(f"""The username "{username}" already exists.""")
+
+
+def get_error_response(err: Exception) -> dict:
+    return {
+        "isBase64Encoded": False,
+        "statusCode": 400,
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps({"error": str(err)}),
+    }
 
 
 def handler(event: dict, context) -> dict:
@@ -57,22 +77,28 @@ def handler(event: dict, context) -> dict:
         print(f"Event: {json.dumps(parsed_event)}")
     except Exception as err:
         print(err)
-        return {
-            "isBase64Encoded": False,
-            "statusCode": 400,
-            "headers": {"content-type": "application/json"},
-            "body": json.dumps({"message": "Bad input", "error": str(err)}),
-        }
+        response = get_error_response(err)
+        print("Response: ", json.dumps(response))
+        return response
 
     # 2. Log user info to DynamoDB
+    try:
+        add_user_to_users_table(parsed_event["username"], parsed_event)
+    except Exception as err:
+        print(err)
+        response = get_error_response(err)
+        print("Response: ", json.dumps(response))
+        return response
 
     # 3. Create auth token & log record
 
     # 4. Create API route for /username/ping
 
-    return {
+    response = {
         "isBase64Encoded": False,
         "statusCode": 201,
         "headers": {"content-type": "application/json"},
         "body": "...",
     }
+    print("Response: ", json.dumps(response))
+    return response
