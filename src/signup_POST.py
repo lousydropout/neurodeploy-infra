@@ -6,11 +6,7 @@ import boto3
 
 
 UTF_8 = "utf-8"
-
 _USERS_TABLE_NAME = "neurodeploy_Users"
-_USERS = os.environ[_USERS_TABLE_NAME]
-_QUEUE = os.environ["queue"]
-
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
 _USERS_TABLE = dynamodb.Table(_USERS_TABLE_NAME)

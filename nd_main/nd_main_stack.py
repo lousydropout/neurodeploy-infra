@@ -262,7 +262,7 @@ class NdMainStack(Stack):
         # grant lambda permission to read secret
         for secret_name, secret in secrets or []:
             secret.grant_read(_lambda)
-            _lambda.add_environment(secret_name, secret.secret_value.unsafe_unwrap())
+            _lambda.add_environment(secret_name, secret.secret_name)
 
         return LambdaQueueTuple(_lambda, _queue)
 

@@ -3,15 +3,14 @@ from typing import Tuple
 import json
 from hashlib import sha256
 import boto3
-from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
-from helpers.DecimalEncoder import DecimalEncoder
+from helpers import validation
+from helpers import dynamodb as ddb
+from helpers.decimalEncoder import DecimalEncoder
+
 
 dynamodb = boto3.client("dynamodb")
-serializer = TypeSerializer()
-deserializer = TypeDeserializer()
 
 UTF_8 = "utf-8"
-_JWT_SECRETS = os.environ["jwt_secret"]
 _USERS_TABLE_NAME = "neurodeploy_Users"
 _USERS = os.environ[_USERS_TABLE_NAME]
 _SESSIONS = os.environ["neurodeploy_Sessions"]
@@ -25,6 +24,10 @@ def parse(event: dict) -> Tuple[dict, dict]:
     """Return a parsed version of the API Gateway event (with password salted and hashed)."""
     # get body
     body: dict[str, str] = json.loads(event["body"])
+    if "username" not in body or "password" not in body:
+        raise Exception(
+            "One or more of the required fields, 'username' and 'password,' is/are missing."
+        )
 
     # other stuff
     request_context = event["requestContext"]
@@ -48,12 +51,12 @@ def parse(event: dict) -> Tuple[dict, dict]:
 
 
 def get_user(username: str) -> str:
-    response = dynamodb.get_item(
+    response: dict = dynamodb.get_item(
         TableName=_USERS_TABLE_NAME,
-        Key={"pk": {"S": f"username::{username}"}},
+        Key=ddb.to_({"pk": f"username::{username}"}),
     )
     items = response.get("Item", {})
-    return {k: deserializer.deserialize(v) for k, v in items.items()}
+    return ddb.from_(items)
 
 
 def get_error_response(err: Exception) -> dict:
@@ -98,13 +101,13 @@ def handler(event: dict, context):
         print("Response: ", json.dumps(response))
         return response
 
-    # 4. Create a Session token and write in table
+    # 4. Create a jwt token and write in table
+    token, exp = validation.create_api_token(username=body["username"])
 
-    # 5. Return session token
-
+    # 5. Return jwt token
     return {
         "isBase64Encoded": False,
         "statusCode": 200,
         "headers": {"content-type": "application/json"},
-        "body": "logged in",
+        "body": {"token": token, "expiration": exp.isoformat()},
     }
