@@ -6,14 +6,22 @@ from database.database_stack import DatabaseStack
 
 
 DOMAIN_NAME = "whinypuppy.com"
+_REGION = "us-west-2"
 ENV = cdk.Environment(
     account=os.getenv("CDK_DEFAULT_ACCOUNT"),
-    region="us-west-2",  # os.getenv("CDK_DEFAULT_REGION"),
+    region=_REGION,  # os.getenv("CDK_DEFAULT_REGION"),
 )
 
 app = cdk.App()
 
-NdMainStack(app, "NdMainStack", prefix="neurodeploy", domain_name=DOMAIN_NAME, env=ENV)
+NdMainStack(
+    app,
+    "NdMainStack",
+    prefix="neurodeploy",
+    domain_name=DOMAIN_NAME,
+    region_name=_REGION,
+    env=ENV,
+)
 DatabaseStack(app, "DatabaseStack", prefix="neurodeploy", env=ENV)
 
 app.synth()

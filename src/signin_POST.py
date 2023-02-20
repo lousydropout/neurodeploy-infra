@@ -11,6 +11,7 @@ serializer = TypeSerializer()
 deserializer = TypeDeserializer()
 
 UTF_8 = "utf-8"
+_JWT_SECRETS = os.environ["jwt_secret"]
 _USERS_TABLE_NAME = "neurodeploy_Users"
 _USERS = os.environ[_USERS_TABLE_NAME]
 _SESSIONS = os.environ["neurodeploy_Sessions"]

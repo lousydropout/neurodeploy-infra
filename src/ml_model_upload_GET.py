@@ -1,4 +1,8 @@
+import os
 import json
+
+_JWT_SECRETS = os.environ["jwt_secret"]
+_REGION_NAME = os.environ["region_name"]
 
 
 def handler(event: dict, context):

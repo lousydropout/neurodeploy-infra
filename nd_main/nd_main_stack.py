@@ -1,4 +1,5 @@
 from typing import Dict, NamedTuple, Tuple
+import aws_cdk as cdk
 from aws_cdk import (
     Duration,
     Stack,
@@ -10,6 +11,7 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
     aws_route53 as route53,
     aws_route53_targets as targets,
+    aws_secretsmanager as sm,
 )
 from constructs import Construct
 from enum import Enum
@@ -38,11 +40,28 @@ class NdMainStack(Stack):
         construct_id: str,
         prefix: str,
         domain_name: str,
+        region_name: str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         self.prefix = prefix
+        self.region_name = region_name
+
+        # secrets
+        _JWT_SECRET_NAME = "neurodeploy/mvp/jwt-secrets"
+        jwt_secret = sm.Secret.from_secret_name_v2(
+            self,
+            "jwt_secret",
+            secret_name=_JWT_SECRET_NAME,
+        )
+
+        # lambda layers
+        py_jwt_layer = lambda_.LayerVersion.from_layer_version_arn(
+            self,
+            "py_jwt_layer",
+            layer_version_arn="arn:aws:lambda:us-west-2:410585721938:layer:pyjwt:1",
+        )
 
         # DNS
         nd_zone = route53.HostedZone.from_lookup(
@@ -93,6 +112,8 @@ class NdMainStack(Stack):
                 (self.users, _READ),
                 (self.sessions, _READ_WRITE),
             ],
+            secrets=[("jwt_secret", jwt_secret)],
+            layers=[py_jwt_layer],
         )
         GET_access_token = self.add(
             "GET",
@@ -104,6 +125,8 @@ class NdMainStack(Stack):
                 (self.models, _READ_WRITE),
                 (self.usage_logs, _READ_WRITE),
             ],
+            secrets=[("jwt_secret", jwt_secret)],
+            layers=[py_jwt_layer],
         )
         POST_create_endpoint = self.add(
             "POST",
@@ -115,6 +138,8 @@ class NdMainStack(Stack):
                 (self.models, _READ_WRITE),
                 (self.usage_logs, _READ_WRITE),
             ],
+            secrets=[("jwt_secret", jwt_secret)],
+            layers=[py_jwt_layer],
         )
         POST_associate_ml_model = self.add(
             "POST",
@@ -126,6 +151,8 @@ class NdMainStack(Stack):
                 (self.models, _READ_WRITE),
                 (self.usage_logs, _READ_WRITE),
             ],
+            secrets=[("jwt_secret", jwt_secret)],
+            layers=[py_jwt_layer],
         )
         GET_ml_model_upload = self.add(
             "GET",
@@ -138,6 +165,8 @@ class NdMainStack(Stack):
                 (self.usage_logs, _READ_WRITE),
             ],
             buckets=[(self.models_bucket, _READ_WRITE)],
+            secrets=[("jwt_secret", jwt_secret)],
+            layers=[py_jwt_layer],
         )
 
         # Add record to route53 pointing "api" subdomain to api gateway
@@ -154,10 +183,12 @@ class NdMainStack(Stack):
         id: str,
         tables: list[Tuple[dynamodb.Table, Permission]] = None,
         buckets: list[Tuple[s3.Bucket, Permission]] = None,
+        layers: list[lambda_.LayerVersion] = None,
         queue: sqs.Queue = None,
     ) -> lambda_.Function:
         # environment variables for the lambda function
         env = {table.table_name: table.table_arn for (table, _) in tables}
+        env["region_name"] = self.region_name
         if queue:
             env["queue"] = queue.queue_url
 
@@ -171,6 +202,7 @@ class NdMainStack(Stack):
             handler=f"{id}.handler",
             environment=env,
             timeout=Duration.seconds(29),
+            layers=layers or [],
         )
 
         # grant lambda function access to DynamoDB tables
@@ -199,6 +231,8 @@ class NdMainStack(Stack):
         resource_name: str,
         tables: list[Tuple[dynamodb.Table, Permission]] = None,
         buckets: list[Tuple[s3.Bucket, Permission]] = None,
+        secrets: list[Tuple[str, sm.Secret]] = None,
+        layers: list[lambda_.LayerVersion] = None,
         create_queue: bool = False,
     ) -> LambdaQueueTuple:
         # create resource under self.api.root if it doesn't already exist
@@ -212,14 +246,25 @@ class NdMainStack(Stack):
         # create lambda
         _id = f"{resource_name}_{http_method}"
         _queue = sqs.Queue(self, resource_name) if create_queue else None
-        _lambda: lambda_.Function = self.create_lambda(_id, tables, buckets, _queue)
+        _lambda = self.create_lambda(
+            _id,
+            tables=tables,
+            buckets=buckets,
+            layers=layers,
+            queue=_queue,
+        )
         if _queue:
             _queue.grant_send_messages(_lambda)
 
         # add method to resource as proxy to _lambda
         _resource.add_method(http_method, apigw.LambdaIntegration(_lambda))
 
+        # grant lambda permission to read secret
+        for secret_name, secret in secrets or []:
+            secret.grant_read(_lambda)
+            _lambda.add_environment(secret_name, secret.secret_value.unsafe_unwrap())
+
         return LambdaQueueTuple(_lambda, _queue)
 
-    def import_dynamodb_table(self, name: str) -> dynamodb.Table:
+    def import_dynamodb_table(self, name: str) -> dynamodb.ITable:
         return dynamodb.Table.from_table_name(self, name, f"{self.prefix}_{name}")
