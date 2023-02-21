@@ -90,7 +90,7 @@ def get_token_record(access_key: str) -> Dict[str, str]:
     try:
         response = dynamodb_client.get_item(
             TableName=_TOKENS_TABLE_NAME,
-            Key=ddb.to_({"pk": access_key, "sk": "default"}),
+            Key=ddb.to_({"pk": access_key, "sk": "active"}),
         )
     except dynamodb_client.exceptions.ResourceNotFoundException:
         return False, {}

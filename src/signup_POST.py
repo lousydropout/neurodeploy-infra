@@ -69,12 +69,13 @@ def add_token_to_tokens_table(username: str, access_key: str, access_secret: str
         salt = uuid().hex
         record = {
             "pk": access_key,
-            "sk": "default",
+            "sk": "active",
             "username": username,
             "access_secret_hash": sha256(
                 (access_secret + salt).encode(UTF_8)
             ).hexdigest(),
             "salt": salt,
+            "description": "default access key + access secret pair",
         }
         _TOKENS_TABLE.put_item(
             Item=record,
