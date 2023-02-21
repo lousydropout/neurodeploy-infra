@@ -68,9 +68,9 @@ def add_token_to_tokens_table(username: str, access_key: str, access_secret: str
     try:
         salt = uuid().hex
         record = {
-            "pk": f"token::{username}",
+            "pk": access_key,
             "sk": "default",
-            "access_key": access_key,
+            "username": username,
             "access_secret_hash": sha256(
                 (access_secret + salt).encode(UTF_8)
             ).hexdigest(),
@@ -81,7 +81,7 @@ def add_token_to_tokens_table(username: str, access_key: str, access_secret: str
             ConditionExpression="attribute_not_exists(pk) AND attribute_not_exists(sk)",
         )
     except dynamodb_client.exceptions.ConditionalCheckFailedException:
-        raise Exception(f"""The default access key for "{username}" already exists.""")
+        raise Exception(f"""The access key for "{access_key}" already exists.""")
 
 
 def get_number_of_users() -> int:

@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Dict
 import os
 from datetime import datetime, timedelta
 import functools
@@ -16,11 +16,13 @@ _REGION: str = os.environ["region_name"]
 _JWT_SECRET_NAME = os.environ["jwt_secret"]
 _SECRETS: list[str] = secrets.get_secret(_JWT_SECRET_NAME, _REGION)["secrets"]
 _USERS_TABLE_NAME = "neurodeploy_Users"
+_TOKENS_TABLE_NAME = "neurodeploy_Tokens"
 UTF_8 = "utf-8"
 
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
 _USERS_TABLE = dynamodb.Table(_USERS_TABLE_NAME)
+_TOKENS_TABLE = dynamodb.Table(_TOKENS_TABLE_NAME)
 
 
 def create_api_token(username: str) -> Tuple[str, datetime]:
@@ -84,29 +86,61 @@ def error_response(message: str) -> dict:
     }
 
 
+def get_token_record(access_key: str) -> Dict[str, str]:
+    try:
+        response = dynamodb_client.get_item(
+            TableName=_TOKENS_TABLE_NAME,
+            Key=ddb.to_({"pk": access_key}),
+        )
+    except dynamodb_client.exceptions.ResourceNotFoundException:
+        return False, {}
+
+    return ddb.from_(response.get("Item", {}))
+
+
+def validate_access_token(body: Dict[str, str]) -> Tuple[bool, dict]:
+    access_key = body["access_key"]
+    access_secret = body["access_secret"]
+
+    record = get_token_record(access_key)
+    salt = record["salt"]
+    hashed = record["access_secret_hash"]
+    username = record["username"]
+
+    hashed_password = sha256((access_secret + salt).encode(UTF_8)).hexdigest()
+
+    if hashed == hashed_password:
+        return True, {"username": username, "exp": None}
+
+    return False, {}
+
+
 def check_authorization(func):
     @functools.wraps(func)
     def f(event: dict, context):
         # Parse event
         headers = event["headers"]
+        body = event["body"]
         request_context = event["requestContext"]
 
         # Validate header
-        try:
-            auth_header = headers["Authorization"]
-        except:
-            return error_response("Missing 'Authorization' header.")
-
+        auth_header = headers.get("Authorization", "")
         valid, payload = validate_header(auth_header)
+
+        # If header validation failed, try validating access token
         if not valid:
-            return error_response("Invalid 'Authorization' token.")
+            valid, payload = validate_access_token(body)
+
+        # If still invalid, return 401
+        if not valid:
+            return error_response("Invalid or expired credentials.")
 
         # Log event and pass into lambda handler
         parsed_event = {
             "http_method": event["httpMethod"],
             "path": event["path"],
             "headers": headers,
-            "body": event["body"],
+            "body": body,
             "query_params": event["queryStringParameters"],
             "jwt_payload": payload,
             "identity": request_context["identity"],
