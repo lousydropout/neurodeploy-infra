@@ -120,7 +120,6 @@ def check_authorization(func):
     def f(event: dict, context):
         # Parse event
         headers = event["headers"]
-        body = event["body"]
         request_context = event["requestContext"]
 
         # Validate header
@@ -148,7 +147,7 @@ def check_authorization(func):
             "http_method": event["httpMethod"],
             "path": event["path"],
             "headers": headers,
-            "body": body,
+            "body": event["body"],
             "query_params": event["queryStringParameters"],
             "jwt_payload": payload,
             "identity": request_context["identity"],

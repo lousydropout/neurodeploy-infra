@@ -207,12 +207,9 @@ class NdMainStack(Stack):
             tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
             create_queue=True,
         )
-        POST_signup.lambda_function.add_environment(
-            "cert", self.main_cert.certificate_arn
-        )
         POST_signup.lambda_function.add_environment("domain_name", self.domain_name)
         POST_signup.lambda_function.add_environment(
-            "hostd_zone_id", self.hosted_zone.hosted_zone_id
+            "hosted_zone_id", self.hosted_zone.hosted_zone_id
         )
         POST_signup.lambda_function.role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
@@ -221,10 +218,7 @@ class NdMainStack(Stack):
             api,
             "POST",
             "signin",
-            tables=[
-                (self.users, _READ),
-                (self.tokens, _READ_WRITE),
-            ],
+            tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -232,20 +226,14 @@ class NdMainStack(Stack):
             api,
             "GET",
             "access_token",
-            tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
-                (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
-                (self.usage_logs, _READ_WRITE),
-            ],
+            tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-        POST_create_endpoint = self.add(
+        POST_endpoint = self.add(
             api,
             "POST",
-            "create_endpoint",
+            "endpoint",
             tables=[
                 (self.users, _READ_WRITE),
                 (self.tokens, _READ_WRITE),
@@ -256,24 +244,23 @@ class NdMainStack(Stack):
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-        POST_associate_ml_model = self.add(
+        POST_ml_model = self.add(
             api,
             "POST",
-            "associate_ml_model",
+            "ml_model",
             tables=[
                 (self.users, _READ_WRITE),
                 (self.tokens, _READ_WRITE),
                 (self.apis, _READ_WRITE),
                 (self.models, _READ_WRITE),
-                (self.usage_logs, _READ_WRITE),
             ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-        GET_ml_model_upload = self.add(
+        GET_ml_model = self.add(
             api,
             "GET",
-            "ml_model_upload",
+            "ml_model",
             tables=[
                 (self.users, _READ_WRITE),
                 (self.tokens, _READ_WRITE),
@@ -301,9 +288,9 @@ class NdMainStack(Stack):
                 "POST_signup": POST_signup,
                 "POST_signin": POST_signin,
                 "GET_access_token": GET_access_token,
-                "POST_create_endpoint": POST_create_endpoint,
-                "POST_associate_ml_model": POST_associate_ml_model,
-                "GET_ml_model_upload": GET_ml_model_upload,
+                "POST_endpoint": POST_endpoint,
+                "POST_ml_model": POST_ml_model,
+                "GET_ml_model": GET_ml_model,
             },
         )
 
@@ -396,9 +383,9 @@ class NdMainStack(Stack):
         self.POST_signup = rest["POST_signup"]
         self.POST_signin = rest["POST_signin"]
         self.GET_access_token = rest["GET_access_token"]
-        self.POST_create_endpoint = rest["POST_create_endpoint"]
-        self.POST_associate_ml_model = rest["POST_associate_ml_model"]
-        self.GET_ml_model_upload = rest["GET_ml_model_upload"]
+        self.POST_endpoint = rest["POST_endpoint"]
+        self.POST_ml_model = rest["POST_ml_model"]
+        self.GET_ml_model = rest["GET_ml_model"]
 
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
