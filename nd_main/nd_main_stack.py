@@ -95,29 +95,6 @@ class NdMainStack(Stack):
             self, "models_bucket", bucket_name=f"{prefix}-models"
         )
 
-        # new user lambda
-        new_user_lambda = lambda_.Function(
-            self,
-            "new_user_lambda",
-            function_name=f"{self.prefix}_new_user",
-            runtime=lambda_.Runtime.PYTHON_3_9,
-            code=lambda_.Code.from_asset("src"),
-            handler="new_user.handler",
-            timeout=Duration.seconds(300),
-            environment={"hosted_zone_id": nd_zone.hosted_zone_id},
-            layers=[],
-        )
-        permissions = [
-            _ACM_FULL_PERMISSION_POLICY,
-            _SQS_FULL_PERMISSION_POLICY,
-            _ROUTE_53_FULL_PERMISSION_POLICY,
-            _APIGW_FULL_PERMISSION_POLICY,
-        ]
-        for permission in permissions:
-            new_user_lambda.role.add_managed_policy(
-                iam.ManagedPolicy.from_aws_managed_policy_name(permission)
-            )
-
         # API Gateway
         self.apigw_resources: Dict[str, apigw.Resource] = {}
         self.api = apigw.RestApi(
@@ -134,18 +111,12 @@ class NdMainStack(Stack):
             tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
             create_queue=True,
         )
-        POST_signup.queue.grant_consume_messages(new_user_lambda)
         POST_signup.lambda_function.add_environment("cert", main_cert.certificate_arn)
         POST_signup.lambda_function.add_environment("domain_name", domain_name)
         POST_signup.lambda_function.add_environment(
             "hostd_zone_id", nd_zone.hosted_zone_id
         )
-        new_user_lambda.add_event_source(
-            event_sources.SqsEventSource(POST_signup.queue, batch_size=1)
-        )
-
-        signup_role = POST_signup.lambda_function.role
-        signup_role.add_managed_policy(
+        POST_signup.lambda_function.role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
         )
         POST_signin = self.add(
@@ -221,6 +192,61 @@ class NdMainStack(Stack):
             target=route53.RecordTarget.from_alias(targets.ApiGateway(self.api)),
         )
 
+        # new user lambda
+        new_user_lambda = lambda_.Function(
+            self,
+            "new_user_lambda",
+            function_name=f"{self.prefix}_new_user",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset("src"),
+            handler="new_user.handler",
+            timeout=Duration.seconds(300),
+            environment={"hosted_zone_id": nd_zone.hosted_zone_id},
+            layers=[],
+        )
+        POST_signup.queue.grant_consume_messages(new_user_lambda)
+        POST_signup.queue.grant_send_messages(new_user_lambda)
+        new_user_lambda.add_event_source(
+            event_sources.SqsEventSource(POST_signup.queue, batch_size=1)
+        )
+        permissions = [
+            _ACM_FULL_PERMISSION_POLICY,
+            _SQS_FULL_PERMISSION_POLICY,
+            _ROUTE_53_FULL_PERMISSION_POLICY,
+            _APIGW_FULL_PERMISSION_POLICY,
+        ]
+        for permission in permissions:
+            new_user_lambda.role.add_managed_policy(
+                iam.ManagedPolicy.from_aws_managed_policy_name(permission)
+            )
+        self.apis.grant_read_write_data(new_user_lambda)
+        new_user_lambda.add_environment(self.apis.table_name, self.apis.table_arn)
+
+        # delete user lambda
+        delete_user_lambda = lambda_.Function(
+            self,
+            "delete_user_lambda",
+            function_name=f"{self.prefix}_delete_user",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset("src"),
+            handler="delete_user.handler",
+            timeout=Duration.seconds(300),
+            environment={"hosted_zone_id": nd_zone.hosted_zone_id},
+            layers=[],
+        )
+        permissions = [
+            _ACM_FULL_PERMISSION_POLICY,
+            _SQS_FULL_PERMISSION_POLICY,
+            _ROUTE_53_FULL_PERMISSION_POLICY,
+            _APIGW_FULL_PERMISSION_POLICY,
+        ]
+        for permission in permissions:
+            delete_user_lambda.role.add_managed_policy(
+                iam.ManagedPolicy.from_aws_managed_policy_name(permission)
+            )
+        self.apis.grant_read_write_data(delete_user_lambda)
+        delete_user_lambda.add_environment(self.apis.table_name, self.apis.table_arn)
+
     def create_lambda(
         self,
         id: str,
@@ -294,6 +320,9 @@ class NdMainStack(Stack):
                 resource_name,
                 visibility_timeout=Duration.minutes(15),
                 retention_period=Duration.hours(12),
+                fifo=True,
+                content_based_deduplication=False,
+                deduplication_scope=sqs.DeduplicationScope.MESSAGE_GROUP,
             )
             if create_queue
             else None

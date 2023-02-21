@@ -12,5 +12,5 @@ def handler(event: dict, context):
 
         username = body["username"]
         domain_name = body["domain_name"]
-        api = create_api_for_sub_domain(domain_name=domain_name, sub=username)
+        api = create_api_for_sub_domain(domain_name=domain_name, username=username)
         print("Created api: ", json.dumps(api, default=str))

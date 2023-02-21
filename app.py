@@ -5,7 +5,7 @@ from nd_main.nd_main_stack import NdMainStack
 from database.database_stack import DatabaseStack
 
 
-DOMAIN_NAME = "whinypuppy.com"
+DOMAIN_NAME = "playingwithml.com"
 _REGION = "us-west-2"
 ENV = cdk.Environment(
     account=os.getenv("CDK_DEFAULT_ACCOUNT"),

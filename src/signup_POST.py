@@ -149,7 +149,12 @@ def handler(event: dict, context) -> dict:
 
     # 4. Send event to queue to create api for new user
     payload = {"domain_name": _DOMAIN_NAME, "username": username}
-    response = sqs.send_message(QueueUrl=_QUEUE, MessageBody=json.dumps(payload))
+    response = sqs.send_message(
+        QueueUrl=_QUEUE,
+        MessageGroupId=username,
+        MessageDeduplicationId=str(uuid()),
+        MessageBody=json.dumps(payload),
+    )
     print("Sqs send messsage response: ", json.dumps(response, default=str))
 
     # 5. Return response

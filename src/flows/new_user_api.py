@@ -3,43 +3,68 @@ import json
 from time import sleep
 import boto3
 
+
+# dynamodb boto3
+_API_TABLE_NAME = "neurodeploy_APIs"
+dynamodb_client = boto3.client("dynamodb")
+dynamodb = boto3.resource("dynamodb")
+_API_TABLE = dynamodb.Table(_API_TABLE_NAME)
+
+# other boto3 clients
 acm = boto3.client("acm")
 apigw = boto3.client("apigateway")
 route53 = boto3.client("route53")
 
+# acm waiter
 hosted_zone_id = os.environ["hosted_zone_id"]
-
 waiter = acm.get_waiter("certificate_validated")
 
 
-def create_api_for_sub_domain(domain_name: str, sub: str) -> dict:
-    record = {"success": False, "step": 0}
-    # 1. request cert
-    print(f"Requesting certicate for {sub}.{domain_name}", end=". . . ")
+def write_object(username: str, payload: dict):
+    record = {"pk": f"username::{username}", "sk": "default", **payload}
+    _API_TABLE.put_item(Item=record)
+
+
+def request_cert(record: dict) -> str:
+    username = record["username"]
+    sub = username
+    domain_name = record["domain_name"]
+
+    print(f"1. Requesting certicate for {sub}.{domain_name}")
     cert_request = acm.request_certificate(
         DomainName=f"{sub}.{domain_name}",
         ValidationMethod="DNS",
     )
-    print("done")
 
     cert_arn = cert_request["CertificateArn"]
-    print("cert arn: ", cert_arn)
-    cert = {"Certificate": {}}
+
+    record["step"] = 1
+    record["resources"]["cert_arn"] = cert_arn
+    print("record 1: ", json.dumps(record, default=str))
+    write_object(username, record)
+    return cert_request["CertificateArn"]
+
+
+def wait_for_validation_values(cert_arn: str) -> dict:
+    iter, cert = 1, {"Certificate": {}}
     while "Value" not in (
         cert["Certificate"]
         .get("DomainValidationOptions", [{}])[0]
         .get("ResourceRecord", {})
     ):
+        print("iter: ", iter)
+        iter += 1
         cert = acm.describe_certificate(CertificateArn=cert_arn)
-        print("cert: ", json.dumps(cert, default=str))
         sleep(0.2)
-    val = cert["Certificate"]["DomainValidationOptions"][0]
-    resource_record = val["ResourceRecord"]
 
-    record = {"success": True, "step": 1, "resources": {"cert": cert_arn}}
-    print("record 1: ", json.dumps(record, default=str))
+    print("cert: ", json.dumps(cert, default=str))
 
-    # 2. create dns CNAME record for validation
+    # return values
+    return cert["Certificate"]["DomainValidationOptions"][0]["ResourceRecord"]
+
+
+def create_vaidation_record(record: dict, resource_record: dict):
+    username = record["username"]
     dns_validation_records = [
         {
             "Action": "CREATE",
@@ -53,70 +78,38 @@ def create_api_for_sub_domain(domain_name: str, sub: str) -> dict:
             },
         },
     ]
-    response = route53.change_resource_record_sets(
+    _ = route53.change_resource_record_sets(
         HostedZoneId=hosted_zone_id,
         ChangeBatch={"Changes": dns_validation_records},
     )
 
-    record = {
-        "success": True,
-        "step": 2,
-        "resources": {"route53 validation record": cert_arn},
-    }
-    print("record 2: ", json.dumps(record, default=str))
+    dns_validation_records[0]["Action"] = "DELETE"
+    record["step"] = 2
+    record["resources"]["dns_validation_record"] = json.dumps(dns_validation_records)
+    write_object(username, record)
 
-    # 3. create apigw
+
+def create_api(record: dict) -> str:
+    domain_name = record["domain_name"]
+    username = record["username"]
+    sub = username
+
+    # create api
     api = apigw.create_rest_api(
         name=f"{domain_name}-{sub}-api",
         endpointConfiguration={"types": ["REGIONAL"]},
     )
+
     api_id = api["id"]
+    record["step"] = 3
+    record["resources"]["rest_api_id"] = api_id
+    write_object(username, record)
 
-    record = {
-        "success": True,
-        "step": 3,
-        "resources": {"api gateway id": api_id},
-    }
-    print("record 3: ", json.dumps(record, default=str))
-
-    # 2b Wait until cert is issued
-    print("Waiting for ceritifcate to be validated", end=". . .")
-    waiter.wait(
-        CertificateArn=cert_arn, WaiterConfig={"Delay": 10, "MaxAttempts": 6 * 3}
-    )
-    print("done")
-
-    # 4. create custom domain for apigw
-    custom_domain = apigw.create_domain_name(
-        domainName=f"{sub}.{domain_name}",
-        regionalCertificateName=f"{sub}.{domain_name}",
-        regionalCertificateArn=cert_arn,
-        endpointConfiguration={"types": ["REGIONAL"]},
-        tags={"string": "string"},
-        securityPolicy="TLS_1_2",
-    )
-    apigw_domain_name = custom_domain["regionalDomainName"]
-    apigw_zone_id = custom_domain["regionalHostedZoneId"]
-
-    record = {
-        "success": True,
-        "step": 4,
-        "resources": {
-            "apigw_domain_name": apigw_domain_name,
-            "apigw_zone_id": apigw_zone_id,
-        },
-    }
-    print("record 4: ", json.dumps(record, default=str))
-
-    # 5. get root resource
+    # 4. get root resource
     response = apigw.get_resources(restApiId=api_id)
     resources = response["items"]
     root_id = list(filter(lambda x: x["path"] == "/", resources))[0]["id"]
 
-    record = {"success": True, "step": 5, "resources": {"root_id": root_id}}
-    print("record 5: ", json.dumps(record, default=str))
-
-    # 6. create resource
     ping = apigw.create_resource(
         restApiId=api_id,
         parentId=root_id,
@@ -124,10 +117,7 @@ def create_api_for_sub_domain(domain_name: str, sub: str) -> dict:
     )
     ping_id = ping["id"]
 
-    record = {"success": True, "step": 6, "resources": {"ping_id": ping_id}}
-    print("record 6: ", json.dumps(record, default=str))
-
-    # 7. create method (requires resource)
+    # 6. create method (requires resource)
     GET_ping = apigw.put_method(
         restApiId=api_id,
         resourceId=ping_id,
@@ -135,7 +125,7 @@ def create_api_for_sub_domain(domain_name: str, sub: str) -> dict:
         authorizationType="NONE",
     )
 
-    # 8. create integration
+    # 7. create integration
     ping_integration = apigw.put_integration(
         restApiId=api_id,
         resourceId=ping_id,
@@ -154,6 +144,7 @@ def create_api_for_sub_domain(domain_name: str, sub: str) -> dict:
         responseTemplates={},
     )
 
+    # 9. create method response
     ping_method_response = apigw.put_method_response(
         restApiId=api_id,
         resourceId=ping_id,
@@ -161,24 +152,53 @@ def create_api_for_sub_domain(domain_name: str, sub: str) -> dict:
         statusCode="200",
     )
 
-    # 9. create deployment (apigw mush contain method)
+    # 10. create deployment (apigw mush contain method)
     deployment = apigw.create_deployment(
         restApiId=api_id,
         stageName="prod",
         tracingEnabled=False,
     )
 
-    # 10. associate custom domain w/ apigw
+    return api_id
+
+
+def create_custom_domain(record: dict, cert_arn: str, api_id: str) -> dict:
+    domain_name = record["domain_name"]
+    username = record["username"]
+    sub = username
+
+    custom_domain = apigw.create_domain_name(
+        domainName=f"{sub}.{domain_name}",
+        regionalCertificateName=f"{sub}.{domain_name}",
+        regionalCertificateArn=cert_arn,
+        endpointConfiguration={"types": ["REGIONAL"]},
+        tags={"username": username},
+        securityPolicy="TLS_1_2",
+    )
+
+    record["step"] = 5
+    record["resources"]["domain_name"] = f"{sub}.{domain_name}"
+    print("record 5: ", json.dumps(record, default=str))
+    write_object(username, record)
+
+    # associate custom domain w/ apigw
     response = apigw.create_base_path_mapping(
         domainName=f"{sub}.{domain_name}",
         restApiId=api_id,
         stage="prod",
     )
 
-    record = {"success": True, "step": 10, "resources": {"base path mapping": response}}
-    print("record 10: ", json.dumps(record, default=str))
+    return custom_domain
 
-    # 11. update route53 to point {sub}.{domain_name}
+
+def create_a_record(record: dict, custom_domain: dict):
+    domain_name = record["domain_name"]
+    username = record["username"]
+    sub = username
+
+    apigw_domain_name = custom_domain["regionalDomainName"]
+    apigw_zone_id = custom_domain["regionalHostedZoneId"]
+
     subdomain_records = [
         {
             "Action": "CREATE",
@@ -193,23 +213,54 @@ def create_api_for_sub_domain(domain_name: str, sub: str) -> dict:
             },
         },
     ]
-    response = route53.change_resource_record_sets(
+    _ = route53.change_resource_record_sets(
         HostedZoneId=hosted_zone_id,
         ChangeBatch={"Changes": subdomain_records},
     )
 
-    record = {
-        "success": True,
-        "step": 11,
-        "resources": {"dns record for sub domain": response},
-    }
-    print("record 11: ", json.dumps(record, default=str))
+    subdomain_records[0]["Action"] = "DELETE"
+    record["step"] = 7
+    record["resources"]["custom_domain_a_record"] = json.dumps(subdomain_records)
+    print("record 7: ", json.dumps(record, default=str))
+    write_object(username, record)
 
-    # route53_resources = route53.list_resource_record_sets(
-    #     HostedZoneId=hosted_zone_id,
-    #     StartRecordName=f"{sub}.{domain_name}",
-    #     StartRecordType="A",
-    # )
+
+def wait_for_cert_to_be_issued(cert_arn: str):
+    print("Waiting for ceritifcate to be validated", end=". . .")
+    waiter.wait(
+        CertificateArn=cert_arn, WaiterConfig={"Delay": 10, "MaxAttempts": 6 * 3}
+    )
+    print("done")
+
+
+def create_api_for_sub_domain(domain_name: str, username: str) -> dict:
+    sub = username
+    record = {
+        "domain_name": domain_name,
+        "username": username,
+        "success": False,
+        "step": 0,
+        "resources": {"hosted_zone_id": hosted_zone_id},
+    }
+
+    # 1. request cert
+    cert_arn = request_cert(record)
+
+    # 2. create dns CNAME record for validation
+    resource_record = wait_for_validation_values(cert_arn)
+    create_vaidation_record(record, resource_record)
+
+    # 3. create apigw and GET /ping
+    api_id = create_api(record)
+
+    # 4. Wait until cert is issued
+    wait_for_cert_to_be_issued(cert_arn)
+
+    # 5. create custom domain for apigw and point to api
+    custom_domain = create_custom_domain(record, cert_arn, api_id)
+
+    # 6. update route 53 to point {sub}.{domain_name}
+    create_a_record(record, custom_domain)
 
     return {
         "endpoint": f"https://{sub}.{domain_name}",

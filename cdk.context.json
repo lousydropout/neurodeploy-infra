@@ -1,6 +1,6 @@
 {
-  "hosted-zone:account=410585721938:domainName=whinypuppy.com:region=us-west-2": {
-    "Id": "/hostedzone/Z009842711P6O3KULXEKM",
-    "Name": "whinypuppy.com."
+  "hosted-zone:account=410585721938:domainName=playingwithml.com:region=us-west-2": {
+    "Id": "/hostedzone/Z0565551CUU03GKV91P6",
+    "Name": "playingwithml.com."
   }
 }
