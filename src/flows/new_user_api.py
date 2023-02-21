@@ -1,14 +1,18 @@
 import os
 import json
 from time import sleep
+from helpers import dynamodb as ddb
 import boto3
 
+_ERROR_429 = (
+    "429 error when attempting to create API Gateway domain name. Sleep 10 seconds."
+)
 
 # dynamodb boto3
-_API_TABLE_NAME = "neurodeploy_APIs"
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
-_API_TABLE = dynamodb.Table(_API_TABLE_NAME)
+_APIS_TABLE_NAME = "neurodeploy_Apis"
+_API_TABLE = dynamodb.Table(_APIS_TABLE_NAME)
 
 # other boto3 clients
 acm = boto3.client("acm")
@@ -21,8 +25,14 @@ waiter = acm.get_waiter("certificate_validated")
 
 
 def write_object(username: str, payload: dict):
-    record = {"pk": f"username::{username}", "sk": "default", **payload}
+    record = {"pk": username, "sk": "default", **payload}
     _API_TABLE.put_item(Item=record)
+
+
+def get_record(username: str) -> dict:
+    key = ddb.to_({"pk": username, "sk": "default"})
+    response = dynamodb_client.get_item(TableName=_APIS_TABLE_NAME, Key=key)
+    return ddb.from_(response.get("Item", {}))
 
 
 def request_cert(record: dict) -> str:
@@ -78,10 +88,16 @@ def create_vaidation_record(record: dict, resource_record: dict):
             },
         },
     ]
-    _ = route53.change_resource_record_sets(
-        HostedZoneId=hosted_zone_id,
-        ChangeBatch={"Changes": dns_validation_records},
-    )
+    try:
+        _ = route53.change_resource_record_sets(
+            HostedZoneId=hosted_zone_id,
+            ChangeBatch={"Changes": dns_validation_records},
+        )
+    except route53.exceptions.InvalidChangeBatch as err:
+        if "it already exists" in str(err):
+            print("Validation record already exists")
+        else:
+            raise err
 
     dns_validation_records[0]["Action"] = "DELETE"
     record["step"] = 2
@@ -167,14 +183,26 @@ def create_custom_domain(record: dict, cert_arn: str, api_id: str) -> dict:
     username = record["username"]
     sub = username
 
-    custom_domain = apigw.create_domain_name(
-        domainName=f"{sub}.{domain_name}",
-        regionalCertificateName=f"{sub}.{domain_name}",
-        regionalCertificateArn=cert_arn,
-        endpointConfiguration={"types": ["REGIONAL"]},
-        tags={"username": username},
-        securityPolicy="TLS_1_2",
-    )
+    while True:
+        try:
+            custom_domain = apigw.create_domain_name(
+                domainName=f"{sub}.{domain_name}",
+                regionalCertificateName=f"{sub}.{domain_name}",
+                regionalCertificateArn=cert_arn,
+                endpointConfiguration={"types": ["REGIONAL"]},
+                tags={"username": username},
+                securityPolicy="TLS_1_2",
+            )
+            break
+        except apigw.exceptions.BadRequestException as err:
+            _already_exists = "The domain name you provided already exists."
+            if _already_exists not in str(err):
+                raise err
+            custom_domain = apigw.get_domain_name(domainName=f"{sub}.{domain_name}")
+            break
+        except apigw.exceptions.TooManyRequestsException as err:
+            print(_ERROR_429)
+            sleep(10)
 
     record["step"] = 5
     record["resources"]["domain_name"] = f"{sub}.{domain_name}"
@@ -182,11 +210,16 @@ def create_custom_domain(record: dict, cert_arn: str, api_id: str) -> dict:
     write_object(username, record)
 
     # associate custom domain w/ apigw
-    response = apigw.create_base_path_mapping(
-        domainName=f"{sub}.{domain_name}",
-        restApiId=api_id,
-        stage="prod",
-    )
+    try:
+        _ = apigw.create_base_path_mapping(
+            domainName=f"{sub}.{domain_name}",
+            restApiId=api_id,
+            stage="prod",
+        )
+    except apigw.exceptions.BadRequestException as err:
+        _already_exists = "The domain name you provided already exists."
+        if _already_exists not in str(err):
+            raise err
 
     return custom_domain
 
@@ -213,10 +246,16 @@ def create_a_record(record: dict, custom_domain: dict):
             },
         },
     ]
-    _ = route53.change_resource_record_sets(
-        HostedZoneId=hosted_zone_id,
-        ChangeBatch={"Changes": subdomain_records},
-    )
+    try:
+        _ = route53.change_resource_record_sets(
+            HostedZoneId=hosted_zone_id,
+            ChangeBatch={"Changes": subdomain_records},
+        )
+    except route53.exceptions.InvalidChangeBatch as err:
+        if "it already exists" in str(err):
+            print("Route 53 A record already exists")
+        else:
+            raise err
 
     subdomain_records[0]["Action"] = "DELETE"
     record["step"] = 7
@@ -227,40 +266,54 @@ def create_a_record(record: dict, custom_domain: dict):
 
 def wait_for_cert_to_be_issued(cert_arn: str):
     print("Waiting for ceritifcate to be validated", end=". . .")
-    waiter.wait(
-        CertificateArn=cert_arn, WaiterConfig={"Delay": 10, "MaxAttempts": 6 * 3}
-    )
+    waiter.wait(CertificateArn=cert_arn, WaiterConfig={"Delay": 30, "MaxAttempts": 6})
     print("done")
+    sleep(30)
 
 
 def create_api_for_sub_domain(domain_name: str, username: str) -> dict:
     sub = username
-    record = {
-        "domain_name": domain_name,
-        "username": username,
-        "success": False,
-        "step": 0,
-        "resources": {"hosted_zone_id": hosted_zone_id},
-    }
+
+    # 0. get record
+    record = get_record(username)
+    if not record:
+        record = {
+            "domain_name": domain_name,
+            "username": username,
+            "success": False,
+            "step": 0,
+            "resources": {"hosted_zone_id": hosted_zone_id},
+        }
 
     # 1. request cert
-    cert_arn = request_cert(record)
+    if "cert_arn" in record["resources"]:
+        cert_arn = record["resources"]["cert_arn"]
+    else:
+        cert_arn = request_cert(record)
 
     # 2. create dns CNAME record for validation
-    resource_record = wait_for_validation_values(cert_arn)
-    create_vaidation_record(record, resource_record)
+    if "dns_validation_record" not in record["resources"]:
+        resource_record = wait_for_validation_values(cert_arn)
+        create_vaidation_record(record, resource_record)
 
     # 3. create apigw and GET /ping
-    api_id = create_api(record)
+    if "rest_api_id" in record["resources"]:
+        api_id = record["resources"]["rest_api_id"]
+    else:
+        api_id = create_api(record)
 
     # 4. Wait until cert is issued
     wait_for_cert_to_be_issued(cert_arn)
 
     # 5. create custom domain for apigw and point to api
-    custom_domain = create_custom_domain(record, cert_arn, api_id)
+    if "custom_domain" in record["resources"]:
+        custom_domain = record["resources"]["custom_domain"]
+    else:
+        custom_domain = create_custom_domain(record, cert_arn, api_id)
 
     # 6. update route 53 to point {sub}.{domain_name}
-    create_a_record(record, custom_domain)
+    if "a_record_for_sub_domain" not in record["resources"]:
+        create_a_record(record, custom_domain)
 
     return {
         "endpoint": f"https://{sub}.{domain_name}",

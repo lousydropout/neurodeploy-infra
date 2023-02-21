@@ -46,7 +46,7 @@ class NdMainStack(Stack):
 
     def import_databases(self):
         self.users: dynamodb.Table = self.import_dynamodb_table("Users")
-        self.apis: dynamodb.Table = self.import_dynamodb_table("APIs")
+        self.apis: dynamodb.Table = self.import_dynamodb_table("Apis")
         self.tokens: dynamodb.Table = self.import_dynamodb_table("Tokens")
         self.models: dynamodb.Table = self.import_dynamodb_table("Models")
         self.usage_logs: dynamodb.Table = self.import_dynamodb_table("UsageLogs")

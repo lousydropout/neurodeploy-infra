@@ -53,7 +53,7 @@ def parse(event: dict) -> Tuple[dict, dict]:
 def get_user(username: str) -> str:
     response: dict = dynamodb.get_item(
         TableName=_USERS_TABLE_NAME,
-        Key=ddb.to_({"pk": f"username::{username}"}),
+        Key=ddb.to_({"pk": username, "sk": "username"}),
     )
     items = response.get("Item", {})
     return ddb.from_(items)

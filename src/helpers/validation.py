@@ -32,6 +32,14 @@ def create_api_token(username: str) -> Tuple[str, datetime]:
     return encoded_jwt, exp
 
 
+def validate_auth_header(header: str) -> Tuple[bool, dict]:
+    valid, payload = False, {}
+    if header.startswith(_BEARER):
+        return validate_jwt(header.lstrip(_BEARER).lstrip())
+
+    return valid, payload
+
+
 def validate_jwt(encoded_jwt: str) -> Tuple[bool, dict]:
     valid, payload = False, {}
     for secret in _SECRETS:
@@ -48,11 +56,11 @@ def validate_jwt(encoded_jwt: str) -> Tuple[bool, dict]:
 
 
 def validate_credentials(username: str, password: str) -> Tuple[bool, dict]:
-    pk = f"username::{username}"
+    key = ddb.to_({"pk": username, "sk": "username"})
     try:
         item = dynamodb_client.get_item(
             TableName=_USERS_TABLE_NAME,
-            Key=ddb.to_({"pk": pk}),
+            Key=key,
         )
     except dynamodb_client.exceptions.ResourceNotFoundException:
         return False, {}
@@ -67,23 +75,6 @@ def validate_credentials(username: str, password: str) -> Tuple[bool, dict]:
         return False, {}
 
     return True, item
-
-
-def validate_jwt(header: str) -> Tuple[bool, dict]:
-    valid, payload = False, {}
-    if header.startswith(_BEARER):
-        return validate_jwt(header.lstrip(_BEARER).lstrip())
-
-    return valid, payload
-
-
-def error_response(message: str) -> dict:
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 400,
-        "headers": {"content-type": "application/json"},
-        "body": json.dumps({"error": message}),
-    }
 
 
 def get_token_record(access_key: str) -> Dict[str, str]:
@@ -115,6 +106,15 @@ def validate_access_token(headers: Dict[str, str]) -> Tuple[bool, dict]:
     return False, {}
 
 
+def error_response(message: str) -> dict:
+    return {
+        "isBase64Encoded": False,
+        "statusCode": 400,
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps({"error": message}),
+    }
+
+
 def check_authorization(func):
     @functools.wraps(func)
     def f(event: dict, context):
@@ -126,7 +126,8 @@ def check_authorization(func):
         valid = False
         if "Authorization" in headers:
             auth_header = headers["Authorization"]
-            valid, payload = validate_jwt(auth_header)
+            valid, payload = validate_auth_header(auth_header)
+            print("Found 'Authorization' in headers. Results: ", valid, payload)
 
         # If header validation failed, try validating access token
         if (
@@ -135,6 +136,7 @@ def check_authorization(func):
             and len(headers.get("access_secret", "")) > 10
         ):
             valid, payload = validate_access_token(headers)
+            print("Found access key pair in headers. Results: ", valid, payload)
 
         # If still invalid, return 401
         if not valid:

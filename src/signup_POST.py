@@ -55,7 +55,7 @@ def parse(event: dict) -> dict:
 
 def add_user_to_users_table(username: str, payload: dict):
     try:
-        record = {"pk": f"username::{username}", **payload}
+        record = {"pk": username, "sk": "username", **payload}
         _USERS_TABLE.put_item(
             Item=record,
             ConditionExpression="attribute_not_exists(pk)",

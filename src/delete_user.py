@@ -13,7 +13,7 @@ _empty = {
 
 def delete_resources(username: str):
     record = delete.get_record(username)
-    resources = {**_empty, **record["resources"]}
+    resources = {**_empty, **record.get("resources", {})}
     print("resources: ", json.dumps(resources, default=str))
     delete.delete_resources(username, **resources)
 

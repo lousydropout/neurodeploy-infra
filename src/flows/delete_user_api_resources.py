@@ -3,7 +3,7 @@ from helpers import dynamodb as ddb
 import boto3
 
 # dynamodb boto3
-_API_TABLE_NAME = "neurodeploy_APIs"
+_APIS_TABLE_NAME = "neurodeploy_Apis"
 dynamodb_client = boto3.client("dynamodb")
 
 # other boto3 clients
@@ -14,17 +14,17 @@ route53 = boto3.client("route53")
 
 def get_record(username: str) -> dict:
     response = dynamodb_client.get_item(
-        TableName=_API_TABLE_NAME,
-        Key=ddb.to_({"pk": f"username::{username}", "sk": "default"}),
+        TableName=_APIS_TABLE_NAME,
+        Key=ddb.to_({"pk": username, "sk": "default"}),
     )
     item = ddb.from_(response.get("Item", {}))
     return item
 
 
 def delete_record(username: str):
-    key = {"pk": f"username::{username}", "sk": "default"}
+    key = ddb.to_({"pk": username, "sk": "default"})
     try:
-        dynamodb_client.delete_item(TableName=_API_TABLE_NAME, Key=ddb.to_(key))
+        dynamodb_client.delete_item(TableName=_APIS_TABLE_NAME, Key=key)
     except dynamodb_client.exceptions.ResourceNotFoundException:
         print(f"Item {key} was already deleted.")
 
@@ -69,15 +69,14 @@ def delete_resources(
     except route53.exceptions.NoSuchHostedZone as err:
         print(f"The route 53 hosted zone '{hosted_zone_id}' does not exist")
     except route53.exceptions.InvalidChangeBatch as err:
-        print(f"Received error: {err}")
+        if "it was not found" not in str(err):
+            raise err
+        print(f"The Route 53 validation record was already deleted")
     except Exception as err:
         print("DNS validation record deletion error: ", err)
         record["dns_validation"] = False
     else:
-        print(
-            "Deleted validation record in route 53: ",
-            json.dumps(response or {}, default=str),
-        )
+        print("Deleted validation record in route 53")
 
     # delete custom domain in route 53
     try:
@@ -89,15 +88,14 @@ def delete_resources(
     except route53.exceptions.NoSuchHostedZone as err:
         print(f"The route 53 hosted zone '{hosted_zone_id}' does not exist")
     except route53.exceptions.InvalidChangeBatch as err:
-        print(f"Received error: {err}")
+        if "it was not found" not in str(err):
+            raise err
+        print(f"The Route 53 custom domain record was already deleted")
     except Exception as err:
         print("Route 53 A record for sub domain deletion error: ", err)
         record["a_record_for_sub_domain"] = False
     else:
-        print(
-            "Deleted A record for custom domain in route 53: ",
-            json.dumps(response or {}, default=str),
-        )
+        print("Deleted A record for custom domain in route 53")
 
     # delete cert
     try:
@@ -112,7 +110,7 @@ def delete_resources(
         print(f"Certificate '{cert_arn}' for sub domain deletion error: ", err)
         record["cert_for_sub_domain"] = False
     else:
-        print(f"Deleted cert '{cert_arn}': ", json.dumps(response or {}, default=str))
+        print(f"Deleted cert '{cert_arn}'")
 
     # delete apigw
     try:
@@ -124,10 +122,7 @@ def delete_resources(
         print(f"API Gateway '{rest_api_id}' deletion error: ", err)
         record["api_gateway"] = False
     else:
-        print(
-            f"Deleted rest api '{rest_api_id}': ",
-            json.dumps(response or {}, default=str),
-        )
+        print(f"Deleted rest api '{rest_api_id}'")
 
     # delete record
     if all(val for val in record.values()):
