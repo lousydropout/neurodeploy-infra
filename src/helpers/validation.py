@@ -69,7 +69,7 @@ def validate_credentials(username: str, password: str) -> Tuple[bool, dict]:
     return True, item
 
 
-def validate_header(header: str) -> Tuple[bool, dict]:
+def validate_jwt(header: str) -> Tuple[bool, dict]:
     valid, payload = False, {}
     if header.startswith(_BEARER):
         return validate_jwt(header.lstrip(_BEARER).lstrip())
@@ -90,7 +90,7 @@ def get_token_record(access_key: str) -> Dict[str, str]:
     try:
         response = dynamodb_client.get_item(
             TableName=_TOKENS_TABLE_NAME,
-            Key=ddb.to_({"pk": access_key}),
+            Key=ddb.to_({"pk": access_key, "sk": "default"}),
         )
     except dynamodb_client.exceptions.ResourceNotFoundException:
         return False, {}
@@ -98,9 +98,9 @@ def get_token_record(access_key: str) -> Dict[str, str]:
     return ddb.from_(response.get("Item", {}))
 
 
-def validate_access_token(body: Dict[str, str]) -> Tuple[bool, dict]:
-    access_key = body["access_key"]
-    access_secret = body["access_secret"]
+def validate_access_token(headers: Dict[str, str]) -> Tuple[bool, dict]:
+    access_key = headers["access_key"]
+    access_secret = headers["access_secret"]
 
     record = get_token_record(access_key)
     salt = record["salt"]
@@ -124,16 +124,24 @@ def check_authorization(func):
         request_context = event["requestContext"]
 
         # Validate header
-        auth_header = headers.get("Authorization", "")
-        valid, payload = validate_header(auth_header)
+        valid = False
+        if "Authorization" in headers:
+            auth_header = headers["Authorization"]
+            valid, payload = validate_jwt(auth_header)
 
         # If header validation failed, try validating access token
-        if not valid:
-            valid, payload = validate_access_token(body)
+        if (
+            not valid
+            and "access_key" in headers
+            and len(headers.get("access_secret", "")) > 10
+        ):
+            valid, payload = validate_access_token(headers)
 
         # If still invalid, return 401
         if not valid:
-            return error_response("Invalid or expired credentials.")
+            event["response"] = error_response("Invalid or expired credentials.")
+            print("Event (+ error response): ", json.dumps(event, default=str))
+            return event["response"]
 
         # Log event and pass into lambda handler
         parsed_event = {
