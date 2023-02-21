@@ -1,4 +1,4 @@
-from typing import Dict, NamedTuple, Tuple
+from typing import Dict, NamedTuple, Tuple, List
 import aws_cdk as cdk
 from aws_cdk import (
     Duration,
@@ -79,163 +79,6 @@ class NdMainStack(Stack):
         )
         return zone
 
-    def create_api_gateway_and_lambdas(self):
-        self.apigw_resources: Dict[str, apigw.Resource] = {}
-        self.api = apigw.RestApi(
-            self,
-            id=f"{self.prefix}_api",
-            domain_name=apigw.DomainNameOptions(
-                domain_name=f"api.{self.domain_name}", certificate=self.main_cert
-            ),
-            endpoint_types=[apigw.EndpointType.REGIONAL],
-        )
-        self.POST_signup = self.add(
-            "POST",
-            "signup",
-            tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
-            create_queue=True,
-        )
-        self.POST_signup.lambda_function.add_environment(
-            "cert", self.main_cert.certificate_arn
-        )
-        self.POST_signup.lambda_function.add_environment(
-            "domain_name", self.domain_name
-        )
-        self.POST_signup.lambda_function.add_environment(
-            "hostd_zone_id", self.hosted_zone.hosted_zone_id
-        )
-        self.POST_signup.lambda_function.role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
-        )
-        self.POST_signin = self.add(
-            "POST",
-            "signin",
-            tables=[
-                (self.users, _READ),
-                (self.tokens, _READ_WRITE),
-            ],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-        )
-        self.GET_access_token = self.add(
-            "GET",
-            "access_token",
-            tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
-                (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
-                (self.usage_logs, _READ_WRITE),
-            ],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-        )
-        self.POST_create_endpoint = self.add(
-            "POST",
-            "create_endpoint",
-            tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
-                (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
-                (self.usage_logs, _READ_WRITE),
-            ],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-        )
-        self.POST_associate_ml_model = self.add(
-            "POST",
-            "associate_ml_model",
-            tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
-                (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
-                (self.usage_logs, _READ_WRITE),
-            ],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-        )
-        self.GET_ml_model_upload = self.add(
-            "GET",
-            "ml_model_upload",
-            tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
-                (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
-                (self.usage_logs, _READ_WRITE),
-            ],
-            buckets=[(self.models_bucket, _READ_WRITE)],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-        )
-
-    def create_delete_user_lambda(self):
-        self.delete_user_lambda = lambda_.Function(
-            self,
-            "delete_user_lambda",
-            function_name=f"{self.prefix}_delete_user",
-            runtime=lambda_.Runtime.PYTHON_3_9,
-            code=lambda_.Code.from_asset("src"),
-            handler="delete_user.handler",
-            timeout=Duration.seconds(300),
-            environment={"hosted_zone_id": self.hosted_zone.hosted_zone_id},
-            layers=[],
-        )
-        permissions = [
-            _ACM_FULL_PERMISSION_POLICY,
-            _SQS_FULL_PERMISSION_POLICY,
-            _ROUTE_53_FULL_PERMISSION_POLICY,
-            _APIGW_FULL_PERMISSION_POLICY,
-        ]
-        for permission in permissions:
-            self.delete_user_lambda.role.add_managed_policy(
-                iam.ManagedPolicy.from_aws_managed_policy_name(permission)
-            )
-        self.apis.grant_read_write_data(self.delete_user_lambda)
-        self.delete_user_lambda.add_environment(
-            self.apis.table_name, self.apis.table_arn
-        )
-
-    def create_new_user_lambda(self):
-        self.new_user_lambda = lambda_.Function(
-            self,
-            "new_user_lambda",
-            function_name=f"{self.prefix}_new_user",
-            runtime=lambda_.Runtime.PYTHON_3_9,
-            code=lambda_.Code.from_asset("src"),
-            handler="new_user.handler",
-            timeout=Duration.seconds(300),
-            environment={"hosted_zone_id": self.hosted_zone.hosted_zone_id},
-            layers=[],
-        )
-        self.POST_signup.queue.grant_consume_messages(self.new_user_lambda)
-        self.POST_signup.queue.grant_send_messages(self.new_user_lambda)
-        self.new_user_lambda.add_event_source(
-            event_sources.SqsEventSource(self.POST_signup.queue, batch_size=1)
-        )
-        permissions = [
-            _ACM_FULL_PERMISSION_POLICY,
-            _SQS_FULL_PERMISSION_POLICY,
-            _ROUTE_53_FULL_PERMISSION_POLICY,
-            _APIGW_FULL_PERMISSION_POLICY,
-        ]
-        for permission in permissions:
-            self.new_user_lambda.role.add_managed_policy(
-                iam.ManagedPolicy.from_aws_managed_policy_name(permission)
-            )
-        self.apis.grant_read_write_data(self.new_user_lambda)
-        self.new_user_lambda.add_environment(self.apis.table_name, self.apis.table_arn)
-
-    def create_cert_for_domain(self) -> acm.Certificate:
-        return acm.Certificate(
-            self,
-            "Certificate",
-            domain_name=f"*.{self.domain_name}",
-            validation=acm.CertificateValidation.from_dns(self.hosted_zone),
-        )
-
     def create_lambda(
         self,
         id: str,
@@ -285,6 +128,7 @@ class NdMainStack(Stack):
 
     def add(
         self,
+        api: apigw.RestApi,
         http_method: str,
         resource_name: str,
         tables: list[Tuple[dynamodb.Table, Permission]] = None,
@@ -298,7 +142,7 @@ class NdMainStack(Stack):
         if resource_name in self.apigw_resources:
             _resource = self.apigw_resources[resource_name]
         if not _resource:
-            _resource = self.api.root.add_resource(resource_name)
+            _resource = api.root.add_resource(resource_name)
             self.apigw_resources[resource_name] = _resource
 
         # create lambda
@@ -336,6 +180,192 @@ class NdMainStack(Stack):
 
         return LambdaQueueTuple(_lambda, _queue)
 
+    def create_cert_for_domain(self) -> acm.Certificate:
+        return acm.Certificate(
+            self,
+            "Certificate",
+            domain_name=f"*.{self.domain_name}",
+            validation=acm.CertificateValidation.from_dns(self.hosted_zone),
+        )
+
+    def create_api_gateway_and_lambdas(
+        self,
+    ) -> Tuple[apigw.RestApi, Dict[str, LambdaQueueTuple]]:
+        self.apigw_resources: Dict[str, apigw.Resource] = {}
+        api = apigw.RestApi(
+            self,
+            id=f"{self.prefix}_api",
+            domain_name=apigw.DomainNameOptions(
+                domain_name=f"api.{self.domain_name}", certificate=self.main_cert
+            ),
+            endpoint_types=[apigw.EndpointType.REGIONAL],
+        )
+        POST_signup = self.add(
+            api,
+            "POST",
+            "signup",
+            tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
+            create_queue=True,
+        )
+        POST_signup.lambda_function.add_environment(
+            "cert", self.main_cert.certificate_arn
+        )
+        POST_signup.lambda_function.add_environment("domain_name", self.domain_name)
+        POST_signup.lambda_function.add_environment(
+            "hostd_zone_id", self.hosted_zone.hosted_zone_id
+        )
+        POST_signup.lambda_function.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
+        )
+        POST_signin = self.add(
+            api,
+            "POST",
+            "signin",
+            tables=[
+                (self.users, _READ),
+                (self.tokens, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+        GET_access_token = self.add(
+            api,
+            "GET",
+            "access_token",
+            tables=[
+                (self.users, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+                (self.usage_logs, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+        POST_create_endpoint = self.add(
+            api,
+            "POST",
+            "create_endpoint",
+            tables=[
+                (self.users, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+                (self.usage_logs, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+        POST_associate_ml_model = self.add(
+            api,
+            "POST",
+            "associate_ml_model",
+            tables=[
+                (self.users, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+                (self.usage_logs, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+        GET_ml_model_upload = self.add(
+            api,
+            "GET",
+            "ml_model_upload",
+            tables=[
+                (self.users, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+                (self.usage_logs, _READ_WRITE),
+            ],
+            buckets=[(self.models_bucket, _READ_WRITE)],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+
+        # Add record to route53 pointing "api" subdomain to api gateway
+        api_record = route53.ARecord(
+            self,
+            "ApiRecord",
+            record_name=f"api.{self.domain_name}",
+            zone=self.hosted_zone,
+            target=route53.RecordTarget.from_alias(targets.ApiGateway(api)),
+        )
+
+        return (
+            api,
+            {
+                "POST_signup": POST_signup,
+                "POST_signin": POST_signin,
+                "GET_access_token": GET_access_token,
+                "POST_create_endpoint": POST_create_endpoint,
+                "POST_associate_ml_model": POST_associate_ml_model,
+                "GET_ml_model_upload": GET_ml_model_upload,
+            },
+        )
+
+    def create_new_user_lambda(self) -> lambda_.Function:
+        new_user_lambda = lambda_.Function(
+            self,
+            "new_user_lambda",
+            function_name=f"{self.prefix}_new_user",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset("src"),
+            handler="new_user.handler",
+            timeout=Duration.seconds(300),
+            environment={"hosted_zone_id": self.hosted_zone.hosted_zone_id},
+            layers=[],
+        )
+        self.POST_signup.queue.grant_consume_messages(new_user_lambda)
+        self.POST_signup.queue.grant_send_messages(new_user_lambda)
+        new_user_lambda.add_event_source(
+            event_sources.SqsEventSource(self.POST_signup.queue, batch_size=1)
+        )
+        permissions = [
+            _ACM_FULL_PERMISSION_POLICY,
+            _SQS_FULL_PERMISSION_POLICY,
+            _ROUTE_53_FULL_PERMISSION_POLICY,
+            _APIGW_FULL_PERMISSION_POLICY,
+        ]
+        for permission in permissions:
+            new_user_lambda.role.add_managed_policy(
+                iam.ManagedPolicy.from_aws_managed_policy_name(permission)
+            )
+        self.apis.grant_read_write_data(new_user_lambda)
+        new_user_lambda.add_environment(self.apis.table_name, self.apis.table_arn)
+
+        return new_user_lambda
+
+    def create_delete_user_lambda(self) -> lambda_.Function:
+        delete_user_lambda = lambda_.Function(
+            self,
+            "delete_user_lambda",
+            function_name=f"{self.prefix}_delete_user",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset("src"),
+            handler="delete_user.handler",
+            timeout=Duration.seconds(300),
+            environment={"hosted_zone_id": self.hosted_zone.hosted_zone_id},
+            layers=[],
+        )
+        permissions = [
+            _ACM_FULL_PERMISSION_POLICY,
+            _SQS_FULL_PERMISSION_POLICY,
+            _ROUTE_53_FULL_PERMISSION_POLICY,
+            _APIGW_FULL_PERMISSION_POLICY,
+        ]
+        for permission in permissions:
+            delete_user_lambda.role.add_managed_policy(
+                iam.ManagedPolicy.from_aws_managed_policy_name(permission)
+            )
+        self.apis.grant_read_write_data(delete_user_lambda)
+        delete_user_lambda.add_environment(self.apis.table_name, self.apis.table_arn)
+
+        return delete_user_lambda
+
     def __init__(
         self,
         scope: Construct,
@@ -362,17 +392,14 @@ class NdMainStack(Stack):
         self.main_cert = self.create_cert_for_domain()
 
         # API Gateway and lambda-integrated routes
-        self.create_api_gateway_and_lambdas()
-
-        # Add record to route53 pointing "api" subdomain to api gateway
-        api_record = route53.ARecord(
-            self,
-            "ApiRecord",
-            record_name=f"api.{self.domain_name}",
-            zone=self.hosted_zone,
-            target=route53.RecordTarget.from_alias(targets.ApiGateway(self.api)),
-        )
+        (self.api, rest) = self.create_api_gateway_and_lambdas()
+        self.POST_signup = rest["POST_signup"]
+        self.POST_signin = rest["POST_signin"]
+        self.GET_access_token = rest["GET_access_token"]
+        self.POST_create_endpoint = rest["POST_create_endpoint"]
+        self.POST_associate_ml_model = rest["POST_associate_ml_model"]
+        self.GET_ml_model_upload = rest["GET_ml_model_upload"]
 
         # Additional lambdas
-        self.create_new_user_lambda()
-        self.create_delete_user_lambda()
+        self.new_user_lambda = self.create_new_user_lambda()
+        self.delete_user_lambda = self.create_delete_user_lambda()
