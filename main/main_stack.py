@@ -1,19 +1,18 @@
-from typing import Dict, NamedTuple, Tuple, List
-import aws_cdk as cdk
+from typing import Dict, NamedTuple, Tuple
 from aws_cdk import (
     Duration,
     Stack,
     aws_apigateway as apigw,
     aws_certificatemanager as acm,
+    aws_dynamodb as dynamodb,
     aws_iam as iam,
-    aws_sqs as sqs,
-    aws_s3 as s3,
     aws_lambda as lambda_,
     aws_lambda_event_sources as event_sources,
-    aws_dynamodb as dynamodb,
     aws_route53 as route53,
     aws_route53_targets as targets,
+    aws_s3 as s3,
     aws_secretsmanager as sm,
+    aws_sqs as sqs,
 )
 from constructs import Construct
 from enum import Enum
@@ -40,16 +39,16 @@ _ROUTE_53_FULL_PERMISSION_POLICY = "AmazonRoute53FullAccess"
 _APIGW_FULL_PERMISSION_POLICY = "AmazonAPIGatewayAdministrator"
 
 
-class NdMainStack(Stack):
+class MainStack(Stack):
     def import_dynamodb_table(self, name: str) -> dynamodb.ITable:
         return dynamodb.Table.from_table_name(self, name, f"{self.prefix}_{name}")
 
     def import_databases(self):
         self.users: dynamodb.Table = self.import_dynamodb_table("Users")
-        self.apis: dynamodb.Table = self.import_dynamodb_table("Apis")
         self.tokens: dynamodb.Table = self.import_dynamodb_table("Tokens")
         self.models: dynamodb.Table = self.import_dynamodb_table("Models")
-        self.usage_logs: dynamodb.Table = self.import_dynamodb_table("UsageLogs")
+        self.apis: dynamodb.Table = self.import_dynamodb_table("Apis")
+        self.usages: dynamodb.Table = self.import_dynamodb_table("Usages")
 
     def import_buckets(self):
         self.models_bucket = s3.Bucket.from_bucket_name(
@@ -65,10 +64,16 @@ class NdMainStack(Stack):
         )
 
     def import_lambda_layers(self):
+        jwt_layer_arn = {
+            "us-west-2": "arn:aws:lambda:us-west-2:410585721938:layer:pyjwt:1",
+            "us-west-1": "arn:aws:lambda:us-west-1:410585721938:layer:pyjwt:1",
+            "us-east-2": "	arn:aws:lambda:us-east-2:410585721938:layer:pyjwt:1",
+        }
+
         self.py_jwt_layer = lambda_.LayerVersion.from_layer_version_arn(
             self,
             "py_jwt_layer",
-            layer_version_arn="arn:aws:lambda:us-west-2:410585721938:layer:pyjwt:1",
+            layer_version_arn=jwt_layer_arn[self.region],
         )
 
     def import_hosted_zone(self) -> route53.IHostedZone:
@@ -239,7 +244,7 @@ class NdMainStack(Stack):
                 (self.tokens, _READ_WRITE),
                 (self.apis, _READ_WRITE),
                 (self.models, _READ_WRITE),
-                (self.usage_logs, _READ_WRITE),
+                (self.usages, _READ_WRITE),
             ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
@@ -266,7 +271,7 @@ class NdMainStack(Stack):
                 (self.tokens, _READ_WRITE),
                 (self.apis, _READ_WRITE),
                 (self.models, _READ_WRITE),
-                (self.usage_logs, _READ_WRITE),
+                (self.usages, _READ_WRITE),
             ],
             buckets=[(self.models_bucket, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
@@ -305,6 +310,7 @@ class NdMainStack(Stack):
             timeout=Duration.seconds(300),
             environment={"hosted_zone_id": self.hosted_zone.hosted_zone_id},
             layers=[],
+            reserved_concurrent_executions=2,
         )
         self.POST_signup.queue.grant_consume_messages(new_user_lambda)
         self.POST_signup.queue.grant_send_messages(new_user_lambda)
@@ -337,6 +343,7 @@ class NdMainStack(Stack):
             timeout=Duration.seconds(300),
             environment={"hosted_zone_id": self.hosted_zone.hosted_zone_id},
             layers=[],
+            reserved_concurrent_executions=2,
         )
         permissions = [
             _ACM_FULL_PERMISSION_POLICY,

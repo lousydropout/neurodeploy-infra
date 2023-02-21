@@ -20,7 +20,7 @@ class BaseStack(Stack):
         models_s3_bucket = s3.Bucket(
             self,
             f"{prefix}_models",
-            bucket_name=f"{prefix}-models",
+            # bucket_name=f"{prefix}-models",
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             encryption=s3.BucketEncryption.S3_MANAGED,
             enforce_ssl=True,
@@ -31,7 +31,7 @@ class BaseStack(Stack):
         logs_s3_bucket = s3.Bucket(
             self,
             f"{prefix}_logs",
-            bucket_name=f"{prefix}-logs",
+            # bucket_name=f"{prefix}-logs",
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             encryption=s3.BucketEncryption.S3_MANAGED,
             enforce_ssl=True,
@@ -44,7 +44,7 @@ class BaseStack(Stack):
         tokens = self.create_table("tokens_table", name="Tokens")
         models = self.create_table("models_table", name="Models")
         apis = self.create_table("apis_table", name="Apis")
-        usage = self.create_table("usage_table", name="Usage")
+        usages = self.create_table("usages_table", name="Usages")
 
     def create_table(
         self, id: str, name: str, enable_ttl: bool = True, ttl_atribute: str = "ttl"

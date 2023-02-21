@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 import os
 import aws_cdk as cdk
-from nd_main.nd_main_stack import NdMainStack
+from main.main_stack import MainStack
 from base.base_stack import BaseStack
 
 
 DOMAIN_NAME = "playingwithml.com"
-_REGION = "us-west-2"
-_REGIONS = ["us-west-2", "us-east-1"]
+_PREFIX = "neurodeploy"
+_REGION = "us-west-1"
+_REGIONS = ["us-west-1", "us-east-2"]
 
 ENV = cdk.Environment(
     account=os.getenv("CDK_DEFAULT_ACCOUNT"),
@@ -16,14 +17,14 @@ ENV = cdk.Environment(
 
 app = cdk.App()
 
-NdMainStack(
+MainStack(
     app,
-    "NdMainStack",
-    prefix="neurodeploy",
+    "MainStack",
+    prefix=_PREFIX,
     domain_name=DOMAIN_NAME,
     region_name=_REGION,
     env=ENV,
 )
-BaseStack(app, "BaseStack", prefix="neurodeploy", regions=_REGIONS, env=ENV)
+BaseStack(app, "BaseStack", prefix=_PREFIX, regions=_REGIONS, env=ENV)
 
 app.synth()
