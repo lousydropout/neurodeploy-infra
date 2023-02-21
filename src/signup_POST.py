@@ -2,14 +2,21 @@ import os
 import json
 from hashlib import sha256
 from uuid import uuid4 as uuid
+
 import boto3
 
 
 UTF_8 = "utf-8"
 _USERS_TABLE_NAME = "neurodeploy_Users"
+_API_TOKENS_TABLE_NAME = "neurodeploy_Tokens"
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
 _USERS_TABLE = dynamodb.Table(_USERS_TABLE_NAME)
+_TOKENS_TABLE = dynamodb.Table(_API_TOKENS_TABLE_NAME)
+
+_DOMAIN_NAME = os.environ["domain_name"]
+_QUEUE = os.environ["queue"]
+sqs = boto3.client("sqs")
 
 
 def parse(event: dict) -> dict:
@@ -57,6 +64,39 @@ def add_user_to_users_table(username: str, payload: dict):
         raise Exception(f"""The username "{username}" already exists.""")
 
 
+def add_token_to_tokens_table(username: str, access_key: str, access_secret: str):
+    try:
+        salt = uuid().hex
+        record = {
+            "pk": f"token::{username}",
+            "sk": "default",
+            "access_key": access_key,
+            "access_secret_hash": sha256(
+                (access_secret + salt).encode(UTF_8)
+            ).hexdigest(),
+            "salt": salt,
+        }
+        _TOKENS_TABLE.put_item(
+            Item=record,
+            ConditionExpression="attribute_not_exists(pk) AND attribute_not_exists(sk)",
+        )
+    except dynamodb_client.exceptions.ConditionalCheckFailedException:
+        raise Exception(f"""The default access key for "{username}" already exists.""")
+
+
+def get_number_of_users() -> int:
+    response = dynamodb_client.scan(
+        TableName=_USERS_TABLE,
+        Limit=101,
+        Select="SPECIFIC_ATTRIBUTES",
+        ProjectionExpression="pk",
+        ConsistentRead=False,
+    )
+    print("users: ", json.dumps(response))
+    num_users = response["ScannedCount"]
+    return num_users
+
+
 def get_error_response(err: Exception) -> dict:
     return {
         "isBase64Encoded": False,
@@ -68,33 +108,61 @@ def get_error_response(err: Exception) -> dict:
 
 def handler(event: dict, context) -> dict:
     # 1. Parse event
+    print("1. parsing event", end=". . . ")
     try:
         parsed_event = parse(event)
-        print(f"Event: {json.dumps(parsed_event)}")
     except Exception as err:
+        print("failed")
         print(err)
         response = get_error_response(err)
         print("Response: ", json.dumps(response))
         return response
+    print("done")
+    print(f"Event: {json.dumps(parsed_event)}")
 
     # 2. Log user info to DynamoDB
+    print("2. creating user", end=". . . ")
     try:
-        add_user_to_users_table(parsed_event["username"], parsed_event)
+        username = parsed_event["username"]
+        add_user_to_users_table(username, parsed_event)
     except Exception as err:
+        print("failed")
         print(err)
         response = get_error_response(err)
         print("Response: ", json.dumps(response))
         return response
+    print("done")
 
     # 3. Create auth token & log record
+    print("3. creating access key and access secret", end=". . . ")
+    access_key = uuid().hex
+    access_secret = sha256(uuid().hex.encode(UTF_8)).hexdigest()
+    try:
+        add_token_to_tokens_table(username, access_key, access_secret)
+    except Exception as err:
+        print("failed")
+        print(err)
+        response = get_error_response(err)
+        print("Response: ", json.dumps(response))
+        return response
+    print("done")
 
-    # 4. Create API route for /username/ping
+    # 4. Send event to queue to create api for new user
+    payload = {"domain_name": _DOMAIN_NAME, "username": username}
+    response = sqs.send_message(QueueUrl=_QUEUE, MessageBody=json.dumps(payload))
+    print("Sqs send messsage response: ", json.dumps(response, default=str))
 
+    # 5. Return response
     response = {
         "isBase64Encoded": False,
         "statusCode": 201,
         "headers": {"content-type": "application/json"},
-        "body": "...",
+        "body": json.dumps(
+            {
+                "access_key": access_key,
+                "access_secret": access_secret,
+            }
+        ),
     }
     print("Response: ", json.dumps(response))
     return response

@@ -87,19 +87,9 @@ def error_response(message: str) -> dict:
 def check_authorization(func):
     @functools.wraps(func)
     def f(event: dict, context):
-        # Parse and log event
+        # Parse event
         headers = event["headers"]
         request_context = event["requestContext"]
-        parsed_event = {
-            "http_method": event["httpMethod"],
-            "path": event["path"],
-            "headers": headers,
-            "body": event["body"],
-            "query_params": event["queryStringParameters"],
-            "identity": request_context["identity"],
-            "request_epoch_time": request_context["requestTimeEpoch"],
-        }
-        print(f"Event: {json.dumps(parsed_event)}")
 
         # Validate header
         try:
@@ -110,6 +100,19 @@ def check_authorization(func):
         valid, payload = validate_header(auth_header)
         if not valid:
             return error_response("Invalid 'Authorization' token.")
+
+        # Log event and pass into lambda handler
+        parsed_event = {
+            "http_method": event["httpMethod"],
+            "path": event["path"],
+            "headers": headers,
+            "body": event["body"],
+            "query_params": event["queryStringParameters"],
+            "jwt_payload": payload,
+            "identity": request_context["identity"],
+            "request_epoch_time": request_context["requestTimeEpoch"],
+        }
+        print(f"Event: {json.dumps(parsed_event)}")
 
         return func(parsed_event, context)
 

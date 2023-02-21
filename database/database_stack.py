@@ -44,13 +44,17 @@ class DatabaseStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
-        sessions = dynamodb.Table(
+        tokens = dynamodb.Table(
             self,
-            f"{prefix}_Sessions",
-            table_name=f"{prefix}_Sessions",
+            f"{prefix}_Tokens",
+            table_name=f"{prefix}_Tokens",
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             partition_key=dynamodb.Attribute(
                 name="pk",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="sk",
                 type=dynamodb.AttributeType.STRING,
             ),
             removal_policy=RemovalPolicy.DESTROY,

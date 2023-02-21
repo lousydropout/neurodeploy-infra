@@ -13,7 +13,7 @@ dynamodb = boto3.client("dynamodb")
 UTF_8 = "utf-8"
 _USERS_TABLE_NAME = "neurodeploy_Users"
 _USERS = os.environ[_USERS_TABLE_NAME]
-_SESSIONS = os.environ["neurodeploy_Sessions"]
+_TOKENS = os.environ["neurodeploy_Tokens"]
 
 
 def is_password_correct(password: str, salt: str, hashed: str) -> bool:
@@ -101,13 +101,15 @@ def handler(event: dict, context):
         print("Response: ", json.dumps(response))
         return response
 
-    # 4. Create a jwt token and write in table
+    # 4. Create jwt
+    print("create jwt token", end=". . . ")
     token, exp = validation.create_api_token(username=body["username"])
+    print("done")
 
-    # 5. Return jwt token
+    # 5. Return jwt
     return {
         "isBase64Encoded": False,
         "statusCode": 200,
         "headers": {"content-type": "application/json"},
-        "body": {"token": token, "expiration": exp.isoformat()},
+        "body": json.dumps({"token": token, "expiration": exp.isoformat()}),
     }

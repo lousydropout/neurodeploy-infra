@@ -5,9 +5,11 @@ from aws_cdk import (
     Stack,
     aws_apigateway as apigw,
     aws_certificatemanager as acm,
+    aws_iam as iam,
     aws_sqs as sqs,
     aws_s3 as s3,
     aws_lambda as lambda_,
+    aws_lambda_event_sources as event_sources,
     aws_dynamodb as dynamodb,
     aws_route53 as route53,
     aws_route53_targets as targets,
@@ -31,6 +33,11 @@ class Permission(Enum):
 _READ = Permission.READ
 _WRITE = Permission.WRITE
 _READ_WRITE = Permission.READ_WRITE
+
+_ACM_FULL_PERMISSION_POLICY = "AWSCertificateManagerFullAccess"
+_SQS_FULL_PERMISSION_POLICY = "AmazonSQSFullAccess"
+_ROUTE_53_FULL_PERMISSION_POLICY = "AmazonRoute53FullAccess"
+_APIGW_FULL_PERMISSION_POLICY = "AmazonAPIGatewayAdministrator"
 
 
 class NdMainStack(Stack):
@@ -79,7 +86,7 @@ class NdMainStack(Stack):
         # DynamoDB Table imports
         self.users: dynamodb.Table = self.import_dynamodb_table("Users")
         self.apis: dynamodb.Table = self.import_dynamodb_table("APIs")
-        self.sessions: dynamodb.Table = self.import_dynamodb_table("Sessions")
+        self.tokens: dynamodb.Table = self.import_dynamodb_table("Tokens")
         self.models: dynamodb.Table = self.import_dynamodb_table("Models")
         self.usage_logs: dynamodb.Table = self.import_dynamodb_table("UsageLogs")
 
@@ -87,6 +94,29 @@ class NdMainStack(Stack):
         self.models_bucket = s3.Bucket.from_bucket_name(
             self, "models_bucket", bucket_name=f"{prefix}-models"
         )
+
+        # new user lambda
+        new_user_lambda = lambda_.Function(
+            self,
+            "new_user_lambda",
+            function_name=f"{self.prefix}_new_user",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset("src"),
+            handler="new_user.handler",
+            timeout=Duration.seconds(300),
+            environment={"hosted_zone_id": nd_zone.hosted_zone_id},
+            layers=[],
+        )
+        permissions = [
+            _ACM_FULL_PERMISSION_POLICY,
+            _SQS_FULL_PERMISSION_POLICY,
+            _ROUTE_53_FULL_PERMISSION_POLICY,
+            _APIGW_FULL_PERMISSION_POLICY,
+        ]
+        for permission in permissions:
+            new_user_lambda.role.add_managed_policy(
+                iam.ManagedPolicy.from_aws_managed_policy_name(permission)
+            )
 
         # API Gateway
         self.apigw_resources: Dict[str, apigw.Resource] = {}
@@ -101,16 +131,29 @@ class NdMainStack(Stack):
         POST_signup = self.add(
             "POST",
             "signup",
-            tables=[(self.users, _READ_WRITE)],
+            tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
             create_queue=True,
         )
+        POST_signup.queue.grant_consume_messages(new_user_lambda)
         POST_signup.lambda_function.add_environment("cert", main_cert.certificate_arn)
+        POST_signup.lambda_function.add_environment("domain_name", domain_name)
+        POST_signup.lambda_function.add_environment(
+            "hostd_zone_id", nd_zone.hosted_zone_id
+        )
+        new_user_lambda.add_event_source(
+            event_sources.SqsEventSource(POST_signup.queue, batch_size=1)
+        )
+
+        signup_role = POST_signup.lambda_function.role
+        signup_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
+        )
         POST_signin = self.add(
             "POST",
             "signin",
             tables=[
                 (self.users, _READ),
-                (self.sessions, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
             ],
             secrets=[("jwt_secret", jwt_secret)],
             layers=[py_jwt_layer],
@@ -120,7 +163,7 @@ class NdMainStack(Stack):
             "access_token",
             tables=[
                 (self.users, _READ_WRITE),
-                (self.sessions, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
                 (self.apis, _READ_WRITE),
                 (self.models, _READ_WRITE),
                 (self.usage_logs, _READ_WRITE),
@@ -133,7 +176,7 @@ class NdMainStack(Stack):
             "create_endpoint",
             tables=[
                 (self.users, _READ_WRITE),
-                (self.sessions, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
                 (self.apis, _READ_WRITE),
                 (self.models, _READ_WRITE),
                 (self.usage_logs, _READ_WRITE),
@@ -146,7 +189,7 @@ class NdMainStack(Stack):
             "associate_ml_model",
             tables=[
                 (self.users, _READ_WRITE),
-                (self.sessions, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
                 (self.apis, _READ_WRITE),
                 (self.models, _READ_WRITE),
                 (self.usage_logs, _READ_WRITE),
@@ -159,7 +202,7 @@ class NdMainStack(Stack):
             "ml_model_upload",
             tables=[
                 (self.users, _READ_WRITE),
-                (self.sessions, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
                 (self.apis, _READ_WRITE),
                 (self.models, _READ_WRITE),
                 (self.usage_logs, _READ_WRITE),
@@ -245,7 +288,16 @@ class NdMainStack(Stack):
 
         # create lambda
         _id = f"{resource_name}_{http_method}"
-        _queue = sqs.Queue(self, resource_name) if create_queue else None
+        _queue = (
+            sqs.Queue(
+                self,
+                resource_name,
+                visibility_timeout=Duration.minutes(15),
+                retention_period=Duration.hours(12),
+            )
+            if create_queue
+            else None
+        )
         _lambda = self.create_lambda(
             _id,
             tables=tables,
