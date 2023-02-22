@@ -227,32 +227,19 @@ class MainStack(Stack):
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-        GET_access_token = self.add(
+        GET_access_tokens = self.add(
             api,
             "GET",
-            "access_token",
+            "access_tokens",
             tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-        POST_endpoint = self.add(
+
+        POST_ml_models = self.add(
             api,
             "POST",
-            "endpoint",
-            tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
-                (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
-                (self.usages, _READ_WRITE),
-            ],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-        )
-        POST_ml_model = self.add(
-            api,
-            "POST",
-            "ml_model",
+            "ml_models",
             tables=[
                 (self.users, _READ_WRITE),
                 (self.tokens, _READ_WRITE),
@@ -262,10 +249,23 @@ class MainStack(Stack):
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-        GET_ml_model = self.add(
+        PUT_ml_models = self.add(
+            api,
+            "PUT",
+            "ml_models",
+            tables=[
+                (self.users, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+        GET_ml_models = self.add(
             api,
             "GET",
-            "ml_model",
+            "ml_models",
             tables=[
                 (self.users, _READ_WRITE),
                 (self.tokens, _READ_WRITE),
@@ -292,10 +292,10 @@ class MainStack(Stack):
             {
                 "POST_signup": POST_signup,
                 "POST_signin": POST_signin,
-                "GET_access_token": GET_access_token,
-                "POST_endpoint": POST_endpoint,
-                "POST_ml_model": POST_ml_model,
-                "GET_ml_model": GET_ml_model,
+                "GET_access_tokens": GET_access_tokens,
+                "POST_ml_models": POST_ml_models,
+                "PUT_ml_models": PUT_ml_models,
+                "GET_ml_models": GET_ml_models,
             },
         )
 
@@ -389,10 +389,10 @@ class MainStack(Stack):
         (self.api, rest) = self.create_api_gateway_and_lambdas()
         self.POST_signup = rest["POST_signup"]
         self.POST_signin = rest["POST_signin"]
-        self.GET_access_token = rest["GET_access_token"]
-        self.POST_endpoint = rest["POST_endpoint"]
-        self.POST_ml_model = rest["POST_ml_model"]
-        self.GET_ml_model = rest["GET_ml_model"]
+        self.GET_access_token = rest["GET_access_tokens"]
+        self.POST_ml_models = rest["POST_ml_models"]
+        self.PUT_ml_models = rest["PUT_ml_models"]
+        self.GET_ml_models = rest["GET_ml_models"]
 
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
