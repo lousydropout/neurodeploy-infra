@@ -37,6 +37,7 @@ def delete_resources(
     cert_arn: str,
     dns_validation_record: str,
     custom_domain_a_record: str,
+    **kwargs,
 ):
     record = {
         "custom_domain": True,
