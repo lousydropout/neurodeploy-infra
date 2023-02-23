@@ -1,4 +1,5 @@
 import os
+from typing import Tuple
 import json
 from time import sleep
 from helpers import dynamodb as ddb
@@ -18,19 +19,38 @@ _API_TABLE = dynamodb.Table(_APIS_TABLE_NAME)
 acm = boto3.client("acm")
 apigw = boto3.client("apigateway")
 route53 = boto3.client("route53")
+lambda_ = boto3.client("lambda")
 
 # acm waiter
 hosted_zone_id = os.environ["hosted_zone_id"]
 waiter = acm.get_waiter("certificate_validated")
 
+# Apis table sort keys
+_DEFAULT = "default"
+_RESOURCES = "resources"
+_PROXY = "proxy"
+
 
 def write_object(username: str, payload: dict):
-    record = {"pk": username, "sk": "default", **payload}
+    record = {"pk": username, "sk": _DEFAULT, **payload}
     _API_TABLE.put_item(Item=record)
 
 
+def write_api_resources(record: dict, username: str, api_id: str, root_id: str):
+    # for _RESOURCES
+    payload = {
+        "api_id": api_id,
+        "root": {"id": root_id, "children": []},
+    }
+    record["resources"]["tree"] = json.dumps(payload)
+
+    write_object(username, record)
+    item = {"pk": username, "sk": _RESOURCES, **payload}
+    _API_TABLE.put_item(Item=item)
+
+
 def get_record(username: str) -> dict:
-    key = ddb.to_({"pk": username, "sk": "default"})
+    key = ddb.to_({"pk": username, "sk": _DEFAULT})
     response = dynamodb_client.get_item(TableName=_APIS_TABLE_NAME, Key=key)
     return ddb.from_(response.get("Item", {}))
 
@@ -105,7 +125,7 @@ def create_vaidation_record(record: dict, resource_record: dict):
     write_object(username, record)
 
 
-def create_api(record: dict) -> str:
+def create_api(record: dict) -> Tuple[str, str]:
     domain_name = record["domain_name"]
     username = record["username"]
     sub = username
@@ -117,14 +137,16 @@ def create_api(record: dict) -> str:
     )
 
     api_id = api["id"]
-    record["step"] = 3
-    record["resources"]["rest_api_id"] = api_id
-    write_object(username, record)
 
     # 4. get root resource
     response = apigw.get_resources(restApiId=api_id)
     resources = response["items"]
-    root_id = list(filter(lambda x: x["path"] == "/", resources))[0]["id"]
+    root_id = next(x for x in resources if x["path"] == "/")["id"]
+
+    record["step"] = 3
+    record["resources"]["rest_api_id"] = api_id
+    record["resources"]["root_id"] = root_id
+    write_object(username, record)
 
     ping = apigw.create_resource(
         restApiId=api_id,
@@ -175,7 +197,7 @@ def create_api(record: dict) -> str:
         tracingEnabled=False,
     )
 
-    return api_id
+    return api_id, root_id
 
 
 def create_custom_domain(record: dict, cert_arn: str, api_id: str) -> dict:
@@ -297,10 +319,20 @@ def create_api_for_sub_domain(domain_name: str, username: str) -> dict:
         create_vaidation_record(record, resource_record)
 
     # 3. create apigw and GET /ping
-    if "rest_api_id" in record["resources"]:
+    if "rest_api_id" in record["resources"] and "root_id" in record["resources"]:
         api_id = record["resources"]["rest_api_id"]
+        root_id = record["resources"]["root_id"]
     else:
-        api_id = create_api(record)
+        api_id, root_id = create_api(record)
+
+    # 3b. save in Apis table
+    if "tree" not in record["resources"]:
+        write_api_resources(
+            record=record,
+            username=username,
+            api_id=api_id,
+            root_id=root_id,
+        )
 
     # 4. Wait until cert is issued
     wait_for_cert_to_be_issued(cert_arn)
@@ -318,3 +350,19 @@ def create_api_for_sub_domain(domain_name: str, username: str) -> dict:
     return {
         "endpoint": f"https://{sub}.{domain_name}",
     }
+
+
+# IAM Policies
+_AWSLambdaExecute = "arn:aws:iam::aws:policy/AWSLambdaExecute"
+_AWSLambdaDynamoDB = "arn:aws:iam::aws:policy/AWSLambdaInvocation-DynamoDB"
+
+# def create_lamdba_function(name: str):
+#     func = lambda_.create_function(
+#         FunctionName=name,
+#         Runtime="python3.9",
+#         Role='string',
+#         Handler="proxy.handler",
+#         Timeout=30,
+#         MemorySize=128,
+#         Code=
+#     )

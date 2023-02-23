@@ -1,0 +1,3 @@
+#!/bin/bash
+rm -rf cdk.out
+cdk deploy RegionalBase-us-east-2 --require-approval any-change

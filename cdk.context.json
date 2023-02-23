@@ -2,5 +2,9 @@
   "hosted-zone:account=410585721938:domainName=playingwithml.com:region=us-west-1": {
     "Id": "/hostedzone/Z0565551CUU03GKV91P6",
     "Name": "playingwithml.com."
+  },
+  "hosted-zone:account=410585721938:domainName=playingwithml.com:region=us-east-2": {
+    "Id": "/hostedzone/Z0565551CUU03GKV91P6",
+    "Name": "playingwithml.com."
   }
 }

@@ -1,4 +1,5 @@
 from typing import Dict, NamedTuple, Tuple
+import aws_cdk as cdk
 from aws_cdk import (
     Duration,
     Stack,
@@ -37,6 +38,7 @@ _ACM_FULL_PERMISSION_POLICY = "AWSCertificateManagerFullAccess"
 _SQS_FULL_PERMISSION_POLICY = "AmazonSQSFullAccess"
 _ROUTE_53_FULL_PERMISSION_POLICY = "AmazonRoute53FullAccess"
 _APIGW_FULL_PERMISSION_POLICY = "AmazonAPIGatewayAdministrator"
+_LAMBDA_PERMISSION_POLICY = "AWSLambdaRole"
 
 
 class MainStack(Stack):
@@ -49,11 +51,6 @@ class MainStack(Stack):
         self.models: dynamodb.Table = self.import_dynamodb_table("Models")
         self.apis: dynamodb.Table = self.import_dynamodb_table("Apis")
         self.usages: dynamodb.Table = self.import_dynamodb_table("Usages")
-
-    def import_buckets(self):
-        self.models_bucket = s3.Bucket.from_bucket_name(
-            self, "models_bucket", bucket_name=f"{self.prefix}-models"
-        )
 
     def import_secrets(self):
         _JWT_SECRET_NAME = "neurodeploy/mvp/jwt-secrets"
@@ -197,14 +194,20 @@ class MainStack(Stack):
         self,
     ) -> Tuple[apigw.RestApi, Dict[str, LambdaQueueTuple]]:
         self.apigw_resources: Dict[str, apigw.Resource] = {}
+
         api = apigw.RestApi(
             self,
             id=f"{self.prefix}_api",
-            domain_name=apigw.DomainNameOptions(
-                domain_name=f"api.{self.domain_name}", certificate=self.main_cert
-            ),
             endpoint_types=[apigw.EndpointType.REGIONAL],
         )
+        domain_name = apigw.DomainName(
+            self,
+            f"{self.domain_name}_domain_name",
+            mapping=api,
+            certificate=self.main_cert,
+            domain_name=f"api.{self.domain_name}",
+        )
+
         POST_signup = self.add(
             api,
             "POST",
@@ -278,13 +281,22 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
 
-        # Add record to route53 pointing "api" subdomain to api gateway
-        api_record = route53.ARecord(
+        # DNS records
+        target = route53.CfnRecordSet.AliasTargetProperty(
+            dns_name=domain_name.domain_name_alias_domain_name,
+            hosted_zone_id=domain_name.domain_name_alias_hosted_zone_id,
+            evaluate_target_health=False,
+        )
+
+        self.api_record = route53.CfnRecordSet(
             self,
-            "ApiRecord",
-            record_name=f"api.{self.domain_name}",
-            zone=self.hosted_zone,
-            target=route53.RecordTarget.from_alias(targets.ApiGateway(api)),
+            "ApiARecord",
+            name=f"api.{self.domain_name}",
+            type="A",
+            alias_target=target,
+            hosted_zone_id=self.hosted_zone.hosted_zone_id,
+            weight=100,
+            set_identifier=cdk.Aws.STACK_NAME,
         )
 
         return (
@@ -360,6 +372,46 @@ class MainStack(Stack):
 
         return delete_user_lambda
 
+    def create_proxy_lambda(self) -> LambdaQueueTuple:
+        proxy_lambda = lambda_.Function(
+            self,
+            "proxy_lambda",
+            function_name=f"{self.prefix}_proxy",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset("src"),
+            handler="proxy.handler",
+            timeout=Duration.seconds(30),
+        )
+
+        logs_queue = sqs.Queue(
+            self,
+            "logs_queue",
+            visibility_timeout=Duration.minutes(15),
+            retention_period=Duration.hours(12),
+            fifo=True,
+            content_based_deduplication=False,
+            deduplication_scope=sqs.DeduplicationScope.MESSAGE_GROUP,
+        )
+
+        # S3 permission
+
+        # DynamoDB permission
+        self.apis.grant_read_data(proxy_lambda)
+        proxy_lambda.add_environment(self.apis.table_name, self.apis.table_arn)
+
+        self.usages.grant_full_access(proxy_lambda)
+        proxy_lambda.add_environment(self.usages.table_name, self.usages.table_arn)
+
+        # SQS queue permission
+        logs_queue.grant_send_messages(proxy_lambda)
+
+        # invoke other lambdas permission
+        proxy_lambda.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(_LAMBDA_PERMISSION_POLICY)
+        )
+
+        return LambdaQueueTuple(proxy_lambda, logs_queue)
+
     def __init__(
         self,
         scope: Construct,
@@ -367,6 +419,7 @@ class MainStack(Stack):
         prefix: str,
         domain_name: str,
         region_name: str,
+        buckets: Dict[str, s3.Bucket],
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -375,18 +428,20 @@ class MainStack(Stack):
         self.region_name = region_name
         self.domain_name = domain_name
 
+        self.models_bucket = buckets["models_bucket"]
+        self.logs_bucket = buckets["models_bucket"]
+
         # Imports
         self.import_secrets()
         self.import_lambda_layers()
         self.import_databases()
-        self.import_buckets()
 
         # DNS
         self.hosted_zone = self.import_hosted_zone()
         self.main_cert = self.create_cert_for_domain()
 
         # API Gateway and lambda-integrated routes
-        (self.api, rest) = self.create_api_gateway_and_lambdas()
+        self.api, rest = self.create_api_gateway_and_lambdas()
         self.POST_signup = rest["POST_signup"]
         self.POST_signin = rest["POST_signin"]
         self.GET_access_token = rest["GET_access_tokens"]
@@ -397,3 +452,6 @@ class MainStack(Stack):
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
         self.delete_user_lambda = self.create_delete_user_lambda()
+
+        # proxy lambda + logs queue
+        # self.proxy = self.create_proxy_lambda()

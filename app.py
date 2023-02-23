@@ -3,28 +3,46 @@ import os
 import aws_cdk as cdk
 from main.main_stack import MainStack
 from base.base_stack import BaseStack
+from base.regional_base_stack import RegionalBaseStack
 
 
 DOMAIN_NAME = "playingwithml.com"
 _PREFIX = "neurodeploy"
-_REGION = "us-west-1"
-_REGIONS = ["us-west-1", "us-east-2"]
-
-ENV = cdk.Environment(
-    account=os.getenv("CDK_DEFAULT_ACCOUNT"),
-    region=_REGION,  # os.getenv("CDK_DEFAULT_REGION"),
-)
+_ACCOUNT = os.getenv("CDK_DEFAULT_ACCOUNT")
+_REGION_1 = "us-west-1"
+_REGION_2 = "us-east-2"
+_REGIONS = [_REGION_1, _REGION_2]
 
 app = cdk.App()
 
-MainStack(
+BaseStack(
     app,
-    "MainStack",
+    "BaseStack",
     prefix=_PREFIX,
-    domain_name=DOMAIN_NAME,
-    region_name=_REGION,
-    env=ENV,
+    regions=_REGIONS,
+    env=cdk.Environment(account=_ACCOUNT, region=_REGION_1),
 )
-BaseStack(app, "BaseStack", prefix=_PREFIX, regions=_REGIONS, env=ENV)
+
+base = {
+    f"RegionalBase-{region}": RegionalBaseStack(
+        app,
+        f"RegionalBase-{region}",
+        prefix=_PREFIX,
+        region=region,
+        env=cdk.Environment(account=_ACCOUNT, region=region),
+    )
+    for region in _REGIONS
+}
+
+for region in _REGIONS:
+    MainStack(
+        app,
+        f"MainStack-{region}",
+        prefix=_PREFIX,
+        domain_name=DOMAIN_NAME,
+        region_name=region,
+        buckets={"models_bucket": base[f"RegionalBase-{region}"].models_bucket},
+        env=cdk.Environment(account=_ACCOUNT, region=region),
+    )
 
 app.synth()

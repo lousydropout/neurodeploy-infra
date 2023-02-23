@@ -16,29 +16,6 @@ class BaseStack(Stack):
         self.prefix = prefix
         self.regions = regions
 
-        # S3 buckets
-        models_s3_bucket = s3.Bucket(
-            self,
-            f"{prefix}_models",
-            # bucket_name=f"{prefix}-models",
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            encryption=s3.BucketEncryption.S3_MANAGED,
-            enforce_ssl=True,
-            versioned=True,
-            removal_policy=RemovalPolicy.RETAIN,
-        )
-
-        logs_s3_bucket = s3.Bucket(
-            self,
-            f"{prefix}_logs",
-            # bucket_name=f"{prefix}-logs",
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            encryption=s3.BucketEncryption.S3_MANAGED,
-            enforce_ssl=True,
-            versioned=True,
-            removal_policy=RemovalPolicy.RETAIN,
-        )
-
         # # DynamoDB tables
         users = self.create_table("users_table", name="Users")
         tokens = self.create_table("tokens_table", name="Tokens")
