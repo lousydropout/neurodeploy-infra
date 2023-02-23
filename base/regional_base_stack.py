@@ -1,4 +1,4 @@
-from aws_cdk import RemovalPolicy, Stack, aws_s3 as s3, aws_secretsmanager as sm
+from aws_cdk import RemovalPolicy, Stack, aws_s3 as s3
 from constructs import Construct
 
 
@@ -35,6 +35,3 @@ class RegionalBaseStack(Stack):
             versioned=True,
             removal_policy=RemovalPolicy.RETAIN,
         )
-
-        # Secrets
-        self.jwt_secret = sm.Secret(self, "jwt_secret", secret_name="jwt_secret")

@@ -14,7 +14,7 @@ _ALGO = "HS256"
 _BEARER = "Bearer"  # The space at the end of the string is supposed to be there
 _REGION: str = os.environ["region_name"]
 _JWT_SECRET_NAME = os.environ["jwt_secret"]
-_SECRETS: list[str] = secrets.get_secret(_JWT_SECRET_NAME, _REGION)["secrets"]
+_SECRETS: dict[str, str] = secrets.get_secret(_JWT_SECRET_NAME, _REGION)
 _USERS_TABLE_NAME = "neurodeploy_Users"
 _TOKENS_TABLE_NAME = "neurodeploy_Tokens"
 UTF_8 = "utf-8"
@@ -28,21 +28,21 @@ _TOKENS_TABLE = dynamodb.Table(_TOKENS_TABLE_NAME)
 def create_api_token(username: str) -> Tuple[str, datetime]:
     exp = datetime.utcnow() + timedelta(days=1)
     payload = {"username": username, "exp": exp}
-    encoded_jwt = jwt.encode(payload, _SECRETS[0], algorithm=_ALGO)
+    encoded_jwt = jwt.encode(payload, _SECRETS["current"], algorithm=_ALGO)
     return encoded_jwt, exp
 
 
 def validate_auth_header(header: str) -> Tuple[bool, dict]:
     valid, payload = False, {}
     if header.startswith(_BEARER):
-        return validate_jwt(header.lstrip(_BEARER).lstrip())
+        return validate_jwt(header[len(_BEARER) + 1 :].lstrip())
 
     return valid, payload
 
 
 def validate_jwt(encoded_jwt: str) -> Tuple[bool, dict]:
     valid, payload = False, {}
-    for secret in _SECRETS:
+    for secret in (_SECRETS["current"], _SECRETS["previous"]):
         if valid:
             continue
         try:

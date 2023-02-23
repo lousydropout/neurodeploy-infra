@@ -15,7 +15,7 @@ _REGIONS = [_REGION_1, _REGION_2]
 
 app = cdk.App()
 
-BaseStack(
+base_stack = BaseStack(
     app,
     "BaseStack",
     prefix=_PREFIX,

@@ -40,6 +40,8 @@ _ROUTE_53_FULL_PERMISSION_POLICY = "AmazonRoute53FullAccess"
 _APIGW_FULL_PERMISSION_POLICY = "AmazonAPIGatewayAdministrator"
 _LAMBDA_PERMISSION_POLICY = "AWSLambdaRole"
 
+_JWT_SECRET_NAME = "jwt_secret"
+
 
 class MainStack(Stack):
     def import_dynamodb_table(self, name: str) -> dynamodb.ITable:
@@ -53,7 +55,6 @@ class MainStack(Stack):
         self.usages: dynamodb.Table = self.import_dynamodb_table("Usages")
 
     def import_secrets(self):
-        _JWT_SECRET_NAME = "neurodeploy/mvp/jwt-secrets"
         self.jwt_secret = sm.Secret.from_secret_name_v2(
             self,
             "jwt_secret",
@@ -64,7 +65,7 @@ class MainStack(Stack):
         jwt_layer_arn = {
             "us-west-2": "arn:aws:lambda:us-west-2:410585721938:layer:pyjwt:1",
             "us-west-1": "arn:aws:lambda:us-west-1:410585721938:layer:pyjwt:1",
-            "us-east-2": "	arn:aws:lambda:us-east-2:410585721938:layer:pyjwt:1",
+            "us-east-2": "arn:aws:lambda:us-east-2:410585721938:layer:pyjwt:1",
         }
 
         self.py_jwt_layer = lambda_.LayerVersion.from_layer_version_arn(

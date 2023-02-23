@@ -1,4 +1,11 @@
-from aws_cdk import aws_dynamodb as dynamodb, aws_s3 as s3, RemovalPolicy, Stack
+from collections.abc import Sequence
+from aws_cdk import (
+    aws_dynamodb as dynamodb,
+    aws_secretsmanager as sm,
+    RemovalPolicy,
+    Stack,
+)
+import aws_cdk as cdk
 from constructs import Construct
 
 
@@ -15,6 +22,7 @@ class BaseStack(Stack):
 
         self.prefix = prefix
         self.regions = regions
+        self.replica_regions = [sm.ReplicaRegion(region=r) for r in regions[1:]]
 
         # # DynamoDB tables
         users = self.create_table("users_table", name="Users")
@@ -22,6 +30,15 @@ class BaseStack(Stack):
         models = self.create_table("models_table", name="Models")
         apis = self.create_table("apis_table", name="Apis")
         usages = self.create_table("usages_table", name="Usages")
+
+        # Secrets
+        self.jwt_secret = sm.Secret(
+            self,
+            "jwt_secret",
+            secret_name="jwt_secret",
+            replica_regions=self.replica_regions,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
 
     def create_table(
         self, id: str, name: str, enable_ttl: bool = True, ttl_atribute: str = "ttl"
