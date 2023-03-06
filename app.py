@@ -13,6 +13,11 @@ _REGION_1 = "us-west-1"
 _REGION_2 = "us-east-2"
 _REGIONS = [_REGION_1, _REGION_2]
 
+_BASE_IMAGE = {
+    _REGION_1: "sha256:3474660e922a336e7903cd77c32b956f7d387e1d9b3350156f676f77184c31c9",
+    _REGION_2: "sha256:3474660e922a336e7903cd77c32b956f7d387e1d9b3350156f676f77184c31c9",
+}
+
 app = cdk.App()
 
 base_stack = BaseStack(
@@ -40,8 +45,11 @@ for region in _REGIONS:
         f"MainStack-{region}",
         prefix=_PREFIX,
         domain_name=DOMAIN_NAME,
+        account_number=_ACCOUNT,
         region_name=region,
         buckets={"models_bucket": base[f"RegionalBase-{region}"].models_bucket},
+        vpc=base[f"RegionalBase-{region}"].vpc,
+        lambda_image=_BASE_IMAGE[region],
         env=cdk.Environment(account=_ACCOUNT, region=region),
     )
 

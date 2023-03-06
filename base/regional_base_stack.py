@@ -1,5 +1,11 @@
-from aws_cdk import RemovalPolicy, Stack, aws_s3 as s3
+from typing import NamedTuple
+from aws_cdk import RemovalPolicy, Stack, aws_ec2 as ec2, aws_efs as efs, aws_s3 as s3
 from constructs import Construct
+
+
+class EfsPair(NamedTuple):
+    filesystem: efs.FileSystem
+    access_point: efs.AccessPoint
 
 
 class RegionalBaseStack(Stack):
@@ -34,4 +40,21 @@ class RegionalBaseStack(Stack):
             enforce_ssl=True,
             versioned=True,
             removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        # VPC
+        self.vpc = ec2.Vpc(
+            self,
+            "VPC",
+            vpc_name="neurodeploy-vpc",
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="public",
+                    subnet_type=ec2.SubnetType.PUBLIC,
+                ),
+                ec2.SubnetConfiguration(
+                    name="private",
+                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
+                ),
+            ],
         )

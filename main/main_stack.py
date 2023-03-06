@@ -6,6 +6,9 @@ from aws_cdk import (
     aws_apigateway as apigw,
     aws_certificatemanager as acm,
     aws_dynamodb as dynamodb,
+    aws_ec2 as ec2,
+    aws_ecr as ecr,
+    aws_efs as efs,
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_lambda_event_sources as event_sources,
@@ -17,6 +20,11 @@ from aws_cdk import (
 )
 from constructs import Construct
 from enum import Enum
+
+
+class EfsPair(NamedTuple):
+    filesystem: efs.FileSystem
+    access_point: efs.AccessPoint
 
 
 class LambdaQueueTuple(NamedTuple):
@@ -38,7 +46,6 @@ _ACM_FULL_PERMISSION_POLICY = "AWSCertificateManagerFullAccess"
 _SQS_FULL_PERMISSION_POLICY = "AmazonSQSFullAccess"
 _ROUTE_53_FULL_PERMISSION_POLICY = "AmazonRoute53FullAccess"
 _APIGW_FULL_PERMISSION_POLICY = "AmazonAPIGatewayAdministrator"
-_LAMBDA_PERMISSION_POLICY = "AWSLambdaRole"
 
 _JWT_SECRET_NAME = "jwt_secret"
 
@@ -63,7 +70,6 @@ class MainStack(Stack):
 
     def import_lambda_layers(self):
         jwt_layer_arn = {
-            "us-west-2": "arn:aws:lambda:us-west-2:410585721938:layer:pyjwt:1",
             "us-west-1": "arn:aws:lambda:us-west-1:410585721938:layer:pyjwt:1",
             "us-east-2": "arn:aws:lambda:us-east-2:410585721938:layer:pyjwt:1",
         }
@@ -192,7 +198,7 @@ class MainStack(Stack):
         )
 
     def create_api_gateway_and_lambdas(
-        self,
+        self, proxy_lambda: lambda_.Function
     ) -> Tuple[apigw.RestApi, Dict[str, LambdaQueueTuple]]:
         self.apigw_resources: Dict[str, apigw.Resource] = {}
 
@@ -220,6 +226,10 @@ class MainStack(Stack):
         POST_signup.lambda_function.add_environment(
             "hosted_zone_id", self.hosted_zone.hosted_zone_id
         )
+        POST_signup.lambda_function.add_environment(
+            "proxy_arn", proxy_lambda.function_arn
+        )
+        proxy_lambda.grant_invoke(POST_signup.lambda_function)
         POST_signup.lambda_function.role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
         )
@@ -253,6 +263,11 @@ class MainStack(Stack):
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
+        POST_ml_models.lambda_function.add_environment(
+            "proxy_arn", proxy_lambda.function_arn
+        )
+        proxy_lambda.grant_invoke(POST_ml_models.lambda_function)
+
         PUT_ml_models = self.add(
             api,
             "PUT",
@@ -266,6 +281,11 @@ class MainStack(Stack):
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
+        PUT_ml_models.lambda_function.add_environment(
+            "proxy_arn", proxy_lambda.function_arn
+        )
+        proxy_lambda.grant_invoke(PUT_ml_models.lambda_function)
+
         GET_ml_models = self.add(
             api,
             "GET",
@@ -281,6 +301,10 @@ class MainStack(Stack):
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
+        GET_ml_models.lambda_function.add_environment(
+            "proxy_arn", proxy_lambda.function_arn
+        )
+        proxy_lambda.grant_invoke(GET_ml_models.lambda_function)
 
         # DNS records
         target = route53.CfnRecordSet.AliasTargetProperty(
@@ -321,7 +345,11 @@ class MainStack(Stack):
             code=lambda_.Code.from_asset("src"),
             handler="new_user.handler",
             timeout=Duration.seconds(300),
-            environment={"hosted_zone_id": self.hosted_zone.hosted_zone_id},
+            environment={
+                "hosted_zone_id": self.hosted_zone.hosted_zone_id,
+                "region_name": self.region_name,
+                "queue": self.POST_signup.queue.queue_url,
+            },
             layers=[],
             reserved_concurrent_executions=2,
         )
@@ -346,6 +374,15 @@ class MainStack(Stack):
         return new_user_lambda
 
     def create_delete_user_lambda(self) -> lambda_.Function:
+        delete_queue = sqs.Queue(
+            self,
+            "delete_queue",
+            visibility_timeout=Duration.minutes(15),
+            retention_period=Duration.hours(12),
+            fifo=True,
+            content_based_deduplication=False,
+            deduplication_scope=sqs.DeduplicationScope.MESSAGE_GROUP,
+        )
         delete_user_lambda = lambda_.Function(
             self,
             "delete_user_lambda",
@@ -354,10 +391,16 @@ class MainStack(Stack):
             code=lambda_.Code.from_asset("src"),
             handler="delete_user.handler",
             timeout=Duration.seconds(300),
-            environment={"hosted_zone_id": self.hosted_zone.hosted_zone_id},
+            environment={
+                "hosted_zone_id": self.hosted_zone.hosted_zone_id,
+                "region_name": self.region_name,
+                "queue": delete_queue.queue_url,
+            },
             layers=[],
             reserved_concurrent_executions=2,
         )
+        delete_queue.grant_send_messages(delete_user_lambda)
+        delete_queue.grant_consume_messages(delete_user_lambda)
         permissions = [
             _ACM_FULL_PERMISSION_POLICY,
             _SQS_FULL_PERMISSION_POLICY,
@@ -373,7 +416,30 @@ class MainStack(Stack):
 
         return delete_user_lambda
 
-    def create_proxy_lambda(self) -> LambdaQueueTuple:
+    def create_proxy_lambda(self) -> Tuple[lambda_.Function, LambdaQueueTuple]:
+        execution_lambda = lambda_.DockerImageFunction(
+            self,
+            "execution_lambda",
+            function_name=f"{self.prefix}_execution",
+            code=lambda_.DockerImageCode.from_ecr(
+                repository=ecr.Repository.from_repository_name(
+                    self, "lambda_runtime_ecr", "lambda_runtime"
+                ),
+                tag_or_digest=self.lambda_image_digest,
+            ),
+            vpc=self.vpc,
+            vpc_subnets=ec2.SubnetSelection(subnets=self.subnets.subnets),
+            # filesystem=lambda_.FileSystem.from_efs_access_point(
+            #     ap=self.ap,
+            #     mount_path="/mnt/lib",
+            # ),
+            timeout=Duration.seconds(28),
+            environment={
+                "region_name": self.region_name,
+            },
+            memory_size=3008,
+        )
+
         proxy_lambda = lambda_.Function(
             self,
             "proxy_lambda",
@@ -381,8 +447,19 @@ class MainStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_9,
             code=lambda_.Code.from_asset("src"),
             handler="proxy.handler",
+            vpc=self.vpc,
+            vpc_subnets=ec2.SubnetSelection(subnets=self.subnets.subnets),
+            # filesystem=lambda_.FileSystem.from_efs_access_point(
+            #     ap=self.ap,
+            #     mount_path="/mnt/lib",
+            # ),
             timeout=Duration.seconds(30),
+            environment={
+                "region_name": self.region_name,
+                "lambda": execution_lambda.function_arn,
+            },
         )
+        execution_lambda.grant_invoke(proxy_lambda)
 
         logs_queue = sqs.Queue(
             self,
@@ -392,6 +469,24 @@ class MainStack(Stack):
             fifo=True,
             content_based_deduplication=False,
             deduplication_scope=sqs.DeduplicationScope.MESSAGE_GROUP,
+        )
+
+        # # Allow proxy lambda to invoke ANY lambda
+        # _INVOKE_FUNCTION = "lambda:InvokeFunction"
+        # proxy_lambda.add_to_role_policy(
+        #     iam.PolicyStatement(actions=[_INVOKE_FUNCTION], resources=["*"])
+        # )
+
+        # Resource policy allowing API Gateway permission
+        # Note: this allows any API Gateways from this account to invoke this proxy lambda
+        _INVOKE_FUNCTION = "lambda:InvokeFunction"
+        _ = lambda_.CfnPermission(
+            self,
+            "apigw_invoke_lambda_permission",
+            action=_INVOKE_FUNCTION,
+            function_name=proxy_lambda.function_arn,
+            principal="apigateway.amazonaws.com",
+            source_account=self.account_number,
         )
 
         # S3 permission
@@ -406,12 +501,7 @@ class MainStack(Stack):
         # SQS queue permission
         logs_queue.grant_send_messages(proxy_lambda)
 
-        # invoke other lambdas permission
-        proxy_lambda.role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name(_LAMBDA_PERMISSION_POLICY)
-        )
-
-        return LambdaQueueTuple(proxy_lambda, logs_queue)
+        return execution_lambda, LambdaQueueTuple(proxy_lambda, logs_queue)
 
     def __init__(
         self,
@@ -420,17 +510,28 @@ class MainStack(Stack):
         prefix: str,
         domain_name: str,
         region_name: str,
+        account_number: str,
         buckets: Dict[str, s3.Bucket],
+        vpc: ec2.Vpc,
+        lambda_image: str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        self.account_number = account_number
         self.prefix = prefix
         self.region_name = region_name
         self.domain_name = domain_name
 
         self.models_bucket = buckets["models_bucket"]
         self.logs_bucket = buckets["models_bucket"]
+
+        self.vpc = vpc
+        self.subnets = self.vpc.select_subnets(
+            subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+        )
+
+        self.lambda_image_digest = lambda_image
 
         # Imports
         self.import_secrets()
@@ -441,8 +542,23 @@ class MainStack(Stack):
         self.hosted_zone = self.import_hosted_zone()
         self.main_cert = self.create_cert_for_domain()
 
+        # EFS
+        self.filesystem = efs.FileSystem(
+            self, "efs", vpc=self.vpc, file_system_name="neurodeploy-efs"
+        )
+        self.ap = efs.AccessPoint(
+            self,
+            "access_point",
+            file_system=self.filesystem,
+            create_acl=efs.Acl(owner_gid="0", owner_uid="0", permissions="777"),
+            posix_user=efs.PosixUser(gid="0", uid="0"),
+        )
+
+        # proxy lambda + logs queue
+        self.execution_lambda, self.proxy = self.create_proxy_lambda()
+
         # API Gateway and lambda-integrated routes
-        self.api, rest = self.create_api_gateway_and_lambdas()
+        self.api, rest = self.create_api_gateway_and_lambdas(self.proxy.lambda_function)
         self.POST_signup = rest["POST_signup"]
         self.POST_signin = rest["POST_signin"]
         self.GET_access_token = rest["GET_access_tokens"]
@@ -453,6 +569,3 @@ class MainStack(Stack):
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
         self.delete_user_lambda = self.create_delete_user_lambda()
-
-        # proxy lambda + logs queue
-        # self.proxy = self.create_proxy_lambda()

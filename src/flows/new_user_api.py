@@ -26,13 +26,13 @@ hosted_zone_id = os.environ["hosted_zone_id"]
 waiter = acm.get_waiter("certificate_validated")
 
 # Apis table sort keys
-_DEFAULT = "default"
 _RESOURCES = "resources"
+_REGION_NAME = os.environ["region_name"]
 _PROXY = "proxy"
 
 
 def write_object(username: str, payload: dict):
-    record = {"pk": username, "sk": _DEFAULT, **payload}
+    record = {"pk": username, "sk": _REGION_NAME, **payload}
     _API_TABLE.put_item(Item=record)
 
 
@@ -50,7 +50,7 @@ def write_api_resources(record: dict, username: str, api_id: str, root_id: str):
 
 
 def get_record(username: str) -> dict:
-    key = ddb.to_({"pk": username, "sk": _DEFAULT})
+    key = ddb.to_({"pk": username, "sk": _REGION_NAME})
     response = dynamodb_client.get_item(TableName=_APIS_TABLE_NAME, Key=key)
     return ddb.from_(response.get("Item", {}))
 
@@ -306,6 +306,7 @@ def create_api_for_sub_domain(domain_name: str, username: str) -> dict:
             "step": 0,
             "resources": {"hosted_zone_id": hosted_zone_id},
         }
+    print("Record: ", json.dumps(record, default=str))
 
     # 1. request cert
     if "cert_arn" in record["resources"]:

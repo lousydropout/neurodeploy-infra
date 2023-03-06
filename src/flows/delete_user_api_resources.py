@@ -12,17 +12,17 @@ apigw = boto3.client("apigateway")
 route53 = boto3.client("route53")
 
 
-def get_record(username: str) -> dict:
+def get_record(username: str, region_name: str) -> dict:
     response = dynamodb_client.get_item(
         TableName=_APIS_TABLE_NAME,
-        Key=ddb.to_({"pk": username, "sk": "default"}),
+        Key=ddb.to_({"pk": username, "sk": region_name}),
     )
     item = ddb.from_(response.get("Item", {}))
     return item
 
 
-def delete_record(username: str):
-    key = ddb.to_({"pk": username, "sk": "default"})
+def delete_record(username: str, region_name: str):
+    key = ddb.to_({"pk": username, "sk": region_name})
     try:
         dynamodb_client.delete_item(TableName=_APIS_TABLE_NAME, Key=key)
     except dynamodb_client.exceptions.ResourceNotFoundException:
