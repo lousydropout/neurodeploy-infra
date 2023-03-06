@@ -2,8 +2,9 @@ import os
 import json
 import boto3
 
-LAMBDA_ARN = os.environ["lambda"]
+EXECUTION_LAMBDA_ARN = os.environ["lambda"]
 lambda_ = boto3.client("lambda")
+dynamodb = boto3.client("dynamodb")
 
 
 def parse_event(event: dict) -> dict:
@@ -14,7 +15,7 @@ def parse_event(event: dict) -> dict:
         "http_method": event["httpMethod"],
         "path": event["path"],
         "headers": headers,
-        "body": event["body"],
+        "body": json.loads(event["body"]),
         "query_params": event["queryStringParameters"],
         "identity": request_context["identity"],
         "request_epoch_time": request_context["requestTimeEpoch"],
@@ -25,16 +26,40 @@ def parse_event(event: dict) -> dict:
 
 def handler(event: dict, context) -> dict:
     print("Event: ", json.dumps(event))
-    parsed_event = parse_event(event)
-    origin = parsed_event["headers"]["origin"]
+    try:
+        parsed_event = parse_event(event)
+    except Exception as err:
+        print(err)
+        return {
+            "isBase64Encoded": False,
+            "statusCode": 400,
+            "headers": {
+                "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
+                "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
+                "Access-Control-Allow-Methods": "POST",  # Allow only GET request
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+            "body": json.dumps({}, default=str),
+        }
+
+    host = parsed_event["headers"]["Host"]
     payload = parsed_event["body"]["payload"]
+
+    # TODO: Grab model based on host from dynamodb
+    model = ""
 
     try:
         lambda_response = lambda_.invoke(
-            FunctionName="string",
+            FunctionName=EXECUTION_LAMBDA_ARN,
             InvocationType="RequestResponse",
             LogType="Tail",
-            Payload=json.dumps({"payload": payload, "model": ""}, default=str).encode(),
+            Payload=json.dumps(
+                {
+                    "payload": payload,
+                    "model": model,
+                },
+                default=str,
+            ).encode(),
         )
     except lambda_.exceptions.TooManyRequestsException as err:
         print(err)
@@ -52,7 +77,7 @@ def handler(event: dict, context) -> dict:
         "isBase64Encoded": False,
         "statusCode": status_code,
         "headers": {
-            "Access-Control-Allow-Origin": origin,  # Required for CORS support to work
+            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
             "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
             "Access-Control-Allow-Methods": "POST",  # Allow only GET request
             "Access-Control-Allow-Headers": "Content-Type",
