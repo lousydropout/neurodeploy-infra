@@ -398,7 +398,7 @@ class MainStack(Stack):
 
         return new_user_lambda
 
-    def create_ping_lambda(self) -> lambda_.Function:
+    def create_ping_lambda(self) -> Tuple[iam.Role, lambda_.Function]:
         ping_lambda = lambda_.Function(
             self,
             "ping_lambda",
@@ -418,7 +418,25 @@ class MainStack(Stack):
             source_account=self.account_number,
         )
 
-        return ping_lambda
+        ping_role = iam.Role(
+            self,
+            "ping_role",
+            role_name="invoke_ping_lambda_role",
+            assumed_by=iam.AnyPrincipal(),
+            inline_policies={
+                "invoke_ping_lambda": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            actions=["lambda:Invoke"],
+                            effect=iam.Effect.ALLOW,
+                            resources=ping_lambda.resource_arns_for_grant_invoke,
+                        )
+                    ]
+                ),
+            },
+        )
+
+        return ping_role, ping_lambda
 
     def create_delete_user_lambda(self) -> lambda_.Function:
         delete_queue = sqs.Queue(
@@ -616,8 +634,14 @@ class MainStack(Stack):
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
         self.delete_user_lambda = self.create_delete_user_lambda()
-        self.ping_lambda = self.create_ping_lambda()
+        self.ping_role, self.ping_lambda = self.create_ping_lambda()
 
         self.POST_ml_models.lambda_function.add_environment(
+            "proxy_arn", self.proxy.lambda_function.function_arn
+        )
+        self.POST_ml_models.lambda_function.add_environment(
             "ping_lambda", self.ping_lambda.function_arn
+        )
+        self.POST_ml_models.lambda_function.add_environment(
+            "ping_role", self.ping_role.role_name
         )
