@@ -140,6 +140,8 @@ class MainStack(Stack):
         api: apigw.RestApi,
         http_method: str,
         resource_name: str,
+        proxy: bool = False,
+        filename_overwrite: str = None,
         tables: list[Tuple[dynamodb.Table, Permission]] = None,
         buckets: list[Tuple[s3.Bucket, Permission]] = None,
         secrets: list[Tuple[str, sm.Secret]] = None,
@@ -153,6 +155,8 @@ class MainStack(Stack):
         if not _resource:
             _resource = api.root.add_resource(resource_name)
             self.apigw_resources[resource_name] = _resource
+        if proxy:
+            _resource = _resource.add_proxy(any_method=False)
 
         # create lambda
         _id = f"{resource_name}_{http_method}"
@@ -170,7 +174,7 @@ class MainStack(Stack):
             else None
         )
         _lambda = self.create_lambda(
-            _id,
+            _id if not filename_overwrite else filename_overwrite,
             tables=tables,
             buckets=buckets,
             layers=layers,
@@ -306,6 +310,24 @@ class MainStack(Stack):
         )
         proxy_lambda.grant_invoke(GET_ml_models.lambda_function)
 
+        GET_list_of_ml_models = self.add(
+            api,
+            "GET",
+            "ml_models",
+            filename_overwrite="ml_models_list_GET",
+            proxy=True,
+            tables=[
+                (self.users, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+                (self.usages, _READ_WRITE),
+            ],
+            buckets=[(self.models_bucket, _READ_WRITE)],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+
         # DNS records
         target = route53.CfnRecordSet.AliasTargetProperty(
             dns_name=domain_name.domain_name_alias_domain_name,
@@ -333,6 +355,7 @@ class MainStack(Stack):
                 "POST_ml_models": POST_ml_models,
                 "PUT_ml_models": PUT_ml_models,
                 "GET_ml_models": GET_ml_models,
+                "GET_list_of_ml_models": GET_list_of_ml_models,
             },
         )
 
@@ -565,6 +588,7 @@ class MainStack(Stack):
         self.POST_ml_models = rest["POST_ml_models"]
         self.PUT_ml_models = rest["PUT_ml_models"]
         self.GET_ml_models = rest["GET_ml_models"]
+        self.GET_list_of_ml_models = rest["GET_list_of_ml_models"]
 
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
