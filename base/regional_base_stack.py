@@ -57,4 +57,13 @@ class RegionalBaseStack(Stack):
                     subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
                 ),
             ],
+            gateway_endpoints={
+                "s3": ec2.GatewayVpcEndpointOptions(
+                    service=ec2.GatewayVpcEndpointAwsService.S3
+                ),
+                "dynamodb": ec2.GatewayVpcEndpointOptions(
+                    service=ec2.GatewayVpcEndpointAwsService.DYNAMODB
+                ),
+            },
+            nat_gateways=1,
         )
