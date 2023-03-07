@@ -47,6 +47,8 @@ _SQS_FULL_PERMISSION_POLICY = "AmazonSQSFullAccess"
 _ROUTE_53_FULL_PERMISSION_POLICY = "AmazonRoute53FullAccess"
 _APIGW_FULL_PERMISSION_POLICY = "AmazonAPIGatewayAdministrator"
 
+_INVOKE_FUNCTION = "lambda:InvokeFunction"
+
 _JWT_SECRET_NAME = "jwt_secret"
 
 
@@ -396,6 +398,28 @@ class MainStack(Stack):
 
         return new_user_lambda
 
+    def create_ping_lambda(self) -> lambda_.Function:
+        ping_lambda = lambda_.Function(
+            self,
+            "ping_lambda",
+            function_name=f"{self.prefix}_ping",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset("src"),
+            handler="ping.handler",
+            timeout=Duration.seconds(30),
+        )
+
+        _ = lambda_.CfnPermission(
+            self,
+            "apigw_invoke_ping_lambda_permission",
+            action=_INVOKE_FUNCTION,
+            function_name=ping_lambda.function_arn,
+            principal="apigateway.amazonaws.com",
+            source_account=self.account_number,
+        )
+
+        return ping_lambda
+
     def create_delete_user_lambda(self) -> lambda_.Function:
         delete_queue = sqs.Queue(
             self,
@@ -502,7 +526,6 @@ class MainStack(Stack):
 
         # Resource policy allowing API Gateway permission
         # Note: this allows any API Gateways from this account to invoke this proxy lambda
-        _INVOKE_FUNCTION = "lambda:InvokeFunction"
         _ = lambda_.CfnPermission(
             self,
             "apigw_invoke_lambda_permission",
@@ -593,3 +616,8 @@ class MainStack(Stack):
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
         self.delete_user_lambda = self.create_delete_user_lambda()
+        self.ping_lambda = self.create_ping_lambda()
+
+        self.POST_ml_models.lambda_function.add_environment(
+            "ping_lambda", self.ping_lambda.function_arn
+        )
