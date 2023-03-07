@@ -46,6 +46,7 @@ _ACM_FULL_PERMISSION_POLICY = "AWSCertificateManagerFullAccess"
 _SQS_FULL_PERMISSION_POLICY = "AmazonSQSFullAccess"
 _ROUTE_53_FULL_PERMISSION_POLICY = "AmazonRoute53FullAccess"
 _APIGW_FULL_PERMISSION_POLICY = "AmazonAPIGatewayAdministrator"
+_IAM_FULL_PERMISSION_POLICY = "IAMFullAccess"
 
 _INVOKE_FUNCTION = "lambda:InvokeFunction"
 
@@ -398,46 +399,6 @@ class MainStack(Stack):
 
         return new_user_lambda
 
-    def create_ping_lambda(self) -> Tuple[iam.Role, lambda_.Function]:
-        ping_lambda = lambda_.Function(
-            self,
-            "ping_lambda",
-            function_name=f"{self.prefix}_ping",
-            runtime=lambda_.Runtime.PYTHON_3_9,
-            code=lambda_.Code.from_asset("src"),
-            handler="ping.handler",
-            timeout=Duration.seconds(30),
-        )
-
-        _ = lambda_.CfnPermission(
-            self,
-            "apigw_invoke_ping_lambda_permission",
-            action=_INVOKE_FUNCTION,
-            function_name=ping_lambda.function_arn,
-            principal="apigateway.amazonaws.com",
-            source_account=self.account_number,
-        )
-
-        ping_role = iam.Role(
-            self,
-            "ping_role",
-            role_name="invoke_ping_lambda_role",
-            assumed_by=iam.AnyPrincipal(),
-            inline_policies={
-                "invoke_ping_lambda": iam.PolicyDocument(
-                    statements=[
-                        iam.PolicyStatement(
-                            actions=["lambda:Invoke"],
-                            effect=iam.Effect.ALLOW,
-                            resources=ping_lambda.resource_arns_for_grant_invoke,
-                        )
-                    ]
-                ),
-            },
-        )
-
-        return ping_role, ping_lambda
-
     def create_delete_user_lambda(self) -> lambda_.Function:
         delete_queue = sqs.Queue(
             self,
@@ -525,6 +486,7 @@ class MainStack(Stack):
             },
         )
         execution_lambda.grant_invoke(proxy_lambda)
+        self.models.grant_read_data(proxy_lambda)
 
         logs_queue = sqs.Queue(
             self,
@@ -537,10 +499,9 @@ class MainStack(Stack):
         )
 
         # # Allow proxy lambda to invoke ANY lambda
-        # _INVOKE_FUNCTION = "lambda:InvokeFunction"
-        # proxy_lambda.add_to_role_policy(
-        #     iam.PolicyStatement(actions=[_INVOKE_FUNCTION], resources=["*"])
-        # )
+        proxy_lambda.add_to_role_policy(
+            iam.PolicyStatement(actions=[_INVOKE_FUNCTION], resources=["*"])
+        )
 
         # Resource policy allowing API Gateway permission
         # Note: this allows any API Gateways from this account to invoke this proxy lambda
@@ -634,14 +595,14 @@ class MainStack(Stack):
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
         self.delete_user_lambda = self.create_delete_user_lambda()
-        self.ping_role, self.ping_lambda = self.create_ping_lambda()
 
         self.POST_ml_models.lambda_function.add_environment(
-            "proxy_arn", self.proxy.lambda_function.function_arn
+            "proxy_lambda", self.proxy.lambda_function.function_name
         )
         self.POST_ml_models.lambda_function.add_environment(
-            "ping_lambda", self.ping_lambda.function_arn
+            "account_number", account_number
         )
-        self.POST_ml_models.lambda_function.add_environment(
-            "ping_role", self.ping_role.role_name
-        )
+        for policy in [_IAM_FULL_PERMISSION_POLICY, _APIGW_FULL_PERMISSION_POLICY]:
+            self.POST_ml_models.lambda_function.role.add_managed_policy(
+                iam.ManagedPolicy.from_aws_managed_policy_name(policy)
+            )

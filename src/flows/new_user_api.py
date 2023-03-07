@@ -190,7 +190,7 @@ def create_api(record: dict) -> Tuple[str, str]:
         statusCode="200",
     )
 
-    # 10. create deployment (apigw mush contain method)
+    # 10. create deployment (apigw must contain method)
     deployment = apigw.create_deployment(
         restApiId=api_id,
         stageName="prod",
