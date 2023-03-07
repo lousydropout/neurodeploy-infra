@@ -1,11 +1,5 @@
-from typing import NamedTuple
-from aws_cdk import RemovalPolicy, Stack, aws_ec2 as ec2, aws_efs as efs, aws_s3 as s3
+from aws_cdk import RemovalPolicy, Stack, aws_ec2 as ec2, aws_s3 as s3
 from constructs import Construct
-
-
-class EfsPair(NamedTuple):
-    filesystem: efs.FileSystem
-    access_point: efs.AccessPoint
 
 
 class RegionalBaseStack(Stack):
@@ -54,7 +48,7 @@ class RegionalBaseStack(Stack):
                 ),
                 ec2.SubnetConfiguration(
                     name="private",
-                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
+                    subnet_type=ec2.SubnetType.PRIVATE_ISOLATED,
                 ),
             ],
             gateway_endpoints={
@@ -65,5 +59,5 @@ class RegionalBaseStack(Stack):
                     service=ec2.GatewayVpcEndpointAwsService.DYNAMODB
                 ),
             },
-            nat_gateways=1,
+            nat_gateways=0,
         )

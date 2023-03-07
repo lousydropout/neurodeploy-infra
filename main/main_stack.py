@@ -13,7 +13,6 @@ from aws_cdk import (
     aws_lambda as lambda_,
     aws_lambda_event_sources as event_sources,
     aws_route53 as route53,
-    aws_route53_targets as targets,
     aws_s3 as s3,
     aws_secretsmanager as sm,
     aws_sqs as sqs,
@@ -555,7 +554,7 @@ class MainStack(Stack):
 
         self.vpc = vpc
         self.subnets = self.vpc.select_subnets(
-            subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+            subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
         )
 
         self.lambda_image_digest = lambda_image
