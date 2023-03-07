@@ -515,6 +515,8 @@ class MainStack(Stack):
         )
 
         # S3 permission
+        self.models_bucket.grant_read(proxy_lambda)
+        self.logs_bucket.grant_read_write(proxy_lambda)
 
         # DynamoDB permission
         self.apis.grant_read_data(proxy_lambda)
