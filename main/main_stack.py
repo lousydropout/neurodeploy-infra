@@ -571,6 +571,7 @@ class MainStack(Stack):
         self.new_user_lambda = self.create_new_user_lambda()
         self.delete_user_lambda = self.create_delete_user_lambda()
 
+        # update POST_ml_models env var and permission
         self.POST_ml_models.lambda_function.add_environment(
             "proxy_lambda", self.proxy.lambda_function.function_name
         )
