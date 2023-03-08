@@ -8,7 +8,7 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
     aws_ec2 as ec2,
     aws_ecr as ecr,
-    aws_efs as efs,
+    # aws_efs as efs,
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_lambda_event_sources as event_sources,
@@ -21,9 +21,9 @@ from constructs import Construct
 from enum import Enum
 
 
-class EfsPair(NamedTuple):
-    filesystem: efs.FileSystem
-    access_point: efs.AccessPoint
+# class EfsPair(NamedTuple):
+#     filesystem: efs.FileSystem
+#     access_point: efs.AccessPoint
 
 
 class LambdaQueueTuple(NamedTuple):
@@ -569,16 +569,16 @@ class MainStack(Stack):
         self.main_cert = self.create_cert_for_domain()
 
         # EFS
-        self.filesystem = efs.FileSystem(
-            self, "efs", vpc=self.vpc, file_system_name="neurodeploy-efs"
-        )
-        self.ap = efs.AccessPoint(
-            self,
-            "access_point",
-            file_system=self.filesystem,
-            create_acl=efs.Acl(owner_gid="0", owner_uid="0", permissions="777"),
-            posix_user=efs.PosixUser(gid="0", uid="0"),
-        )
+        # self.filesystem = efs.FileSystem(
+        #     self, "efs", vpc=self.vpc, file_system_name="neurodeploy-efs"
+        # )
+        # self.ap = efs.AccessPoint(
+        #     self,
+        #     "access_point",
+        #     file_system=self.filesystem,
+        #     create_acl=efs.Acl(owner_gid="0", owner_uid="0", permissions="777"),
+        #     posix_user=efs.PosixUser(gid="0", uid="0"),
+        # )
 
         # proxy lambda + logs queue
         self.execution_lambda, self.proxy = self.create_proxy_lambda()
