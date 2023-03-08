@@ -1,5 +1,4 @@
 import os
-from uuid import uuid4 as uuid
 import json
 from helpers import dynamodb as ddb
 from helpers import validation
@@ -8,8 +7,9 @@ from botocore.exceptions import ClientError
 
 _ACCOUNT_NUMBER = os.environ["account_number"]
 _REGION_NAME = os.environ["region_name"]
-PROXY_LAMBDA_ARN = os.environ["proxy_lambda"]
-
+PROXY_LAMBDA_ARN = os.environ["proxy_arn"]
+MODELS_S3_BUCKET = f"neurodeploy-models-{_REGION_NAME}"
+LOGS_S3_BUCKET = f"neurodeploy-logs-{_REGION_NAME}"
 
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")
@@ -22,7 +22,7 @@ _MODEL_TABLE = dynamodb.Table(_MODELS_TABLE_NAME)
 # other boto3 clients
 apigw = boto3.client("apigateway")
 iam = boto3.client("iam")
-s3 = boto3.client("iam")
+s3 = boto3.client("s3")
 
 
 def get_record(username: str, table_name: str) -> dict:
@@ -117,10 +117,8 @@ def handler(event: dict, context):
     resources = api_record["resources"]
     api_id = resources["rest_api_id"]
     root_id = resources["root_id"]
-    domain_name = resources["domain_name"]
 
-    body = json.loads(event["body"])
-    model_name = body["model_name"]
+    model_name = event["path_params"]["proxy"]
 
     # Create resource
     try:
@@ -156,7 +154,9 @@ def handler(event: dict, context):
     write_model_object(username=username, model=model_name, sk="main", payload=payload)
 
     # create presigned url for model
-    # response = s3.generate_presigned_url(Bucket="bucket_name", Key="key")
+    key = f"{username}/{model_name}"
+    response = s3.generate_presigned_post(Bucket=MODELS_S3_BUCKET, Key=key)
+    print("Response: ", json.dumps(response))
 
     # # Demonstrate how another Python program can use the presigned URL to upload a file
     # with open(object_name, 'rb') as f:
@@ -168,6 +168,6 @@ def handler(event: dict, context):
     return {
         "isBase64Encoded": False,
         "statusCode": 201,
-        "headers": {"headerName": "headerValue"},
+        # "headers": {"headerName": "headerValue"},
         "body": json.dumps(response, default=str),
     }

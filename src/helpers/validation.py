@@ -119,7 +119,7 @@ def check_authorization(func):
     @functools.wraps(func)
     def f(event: dict, context):
         # Parse event
-        headers = event["headers"]
+        headers = event.get("headers") or []
         request_context = event["requestContext"]
 
         # Validate header
@@ -151,6 +151,7 @@ def check_authorization(func):
             "headers": headers,
             "body": event["body"],
             "query_params": event["queryStringParameters"],
+            "path_params": event["pathParameters"],
             "jwt_payload": payload,
             "identity": request_context["identity"],
             "request_epoch_time": request_context["requestTimeEpoch"],

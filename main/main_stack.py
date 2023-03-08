@@ -146,13 +146,20 @@ class MainStack(Stack):
     ) -> LambdaQueueTuple:
         # create resource under self.api.root if it doesn't already exist
         _resource: apigw.Resource = None
-        if resource_name in self.apigw_resources:
-            _resource = self.apigw_resources[resource_name]
+        if (resource_name, proxy) in self.apigw_resources:
+            _resource = self.apigw_resources[(resource_name, proxy)]
+        # didn't exist
         if not _resource:
-            _resource = api.root.add_resource(resource_name)
-            self.apigw_resources[resource_name] = _resource
-        if proxy:
-            _resource = _resource.add_proxy(any_method=False)
+            if not proxy:
+                _resource = api.root.add_resource(resource_name)
+            else:
+                if (resource_name, False) in self.apigw_resources:
+                    _resource = self.apigw_resources[(resource_name, False)]
+                else:
+                    _resource = api.root.add_resource(resource_name)
+                    self.apigw_resources[(resource_name, False)] = _resource
+                _resource = _resource.add_proxy(any_method=False)
+            self.apigw_resources[(resource_name, proxy)] = _resource
 
         # create lambda
         _id = f"{resource_name}_{http_method}"
@@ -200,7 +207,7 @@ class MainStack(Stack):
     def create_api_gateway_and_lambdas(
         self, proxy_lambda: lambda_.Function
     ) -> Tuple[apigw.RestApi, dict[str, LambdaQueueTuple]]:
-        self.apigw_resources: dict[str, apigw.Resource] = {}
+        self.apigw_resources: dict[str, dict] = {}
 
         api = apigw.RestApi(
             self,
@@ -254,6 +261,7 @@ class MainStack(Stack):
             api,
             "POST",
             "ml_models",
+            proxy=True,
             tables=[
                 (self.users, _READ_WRITE),
                 (self.tokens, _READ_WRITE),
@@ -264,14 +272,43 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
         POST_ml_models.lambda_function.add_environment(
+            "account_number", self.account_number
+        )
+        POST_ml_models.lambda_function.add_environment(
             "proxy_arn", proxy_lambda.function_arn
         )
         proxy_lambda.grant_invoke(POST_ml_models.lambda_function)
+        self.models_bucket.grant_read_write(POST_ml_models.lambda_function)
+        for policy in [_IAM_FULL_PERMISSION_POLICY, _APIGW_FULL_PERMISSION_POLICY]:
+            POST_ml_models.lambda_function.role.add_managed_policy(
+                iam.ManagedPolicy.from_aws_managed_policy_name(policy)
+            )
+
+        DELETE_ml_models = self.add(
+            api,
+            "DELETE",
+            "ml_models",
+            proxy=True,
+            tables=[
+                (self.users, _READ_WRITE),
+                (self.tokens, _READ_WRITE),
+                (self.apis, _READ_WRITE),
+                (self.models, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+        self.models_bucket.grant_read_write(DELETE_ml_models.lambda_function)
+        for policy in [_IAM_FULL_PERMISSION_POLICY, _APIGW_FULL_PERMISSION_POLICY]:
+            DELETE_ml_models.lambda_function.role.add_managed_policy(
+                iam.ManagedPolicy.from_aws_managed_policy_name(policy)
+            )
 
         PUT_ml_models = self.add(
             api,
             "PUT",
             "ml_models",
+            proxy=True,
             tables=[
                 (self.users, _READ_WRITE),
                 (self.tokens, _READ_WRITE),
@@ -290,6 +327,7 @@ class MainStack(Stack):
             api,
             "GET",
             "ml_models",
+            proxy=True,
             tables=[
                 (self.users, _READ_WRITE),
                 (self.tokens, _READ_WRITE),
@@ -311,7 +349,6 @@ class MainStack(Stack):
             "GET",
             "ml_models",
             filename_overwrite="ml_models_list_GET",
-            proxy=True,
             tables=[
                 (self.users, _READ_WRITE),
                 (self.tokens, _READ_WRITE),
@@ -350,6 +387,7 @@ class MainStack(Stack):
                 "GET_access_tokens": GET_access_tokens,
                 "POST_ml_models": POST_ml_models,
                 "PUT_ml_models": PUT_ml_models,
+                "DELETE_ml_models": DELETE_ml_models,
                 "GET_ml_models": GET_ml_models,
                 "GET_list_of_ml_models": GET_list_of_ml_models,
             },
@@ -566,6 +604,7 @@ class MainStack(Stack):
         self.PUT_ml_models = rest["PUT_ml_models"]
         self.GET_ml_models = rest["GET_ml_models"]
         self.GET_list_of_ml_models = rest["GET_list_of_ml_models"]
+        self.DELETE_ml_models = rest["DELETE_ml_models"]
 
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
@@ -578,7 +617,3 @@ class MainStack(Stack):
         self.POST_ml_models.lambda_function.add_environment(
             "account_number", account_number
         )
-        for policy in [_IAM_FULL_PERMISSION_POLICY, _APIGW_FULL_PERMISSION_POLICY]:
-            self.POST_ml_models.lambda_function.role.add_managed_policy(
-                iam.ManagedPolicy.from_aws_managed_policy_name(policy)
-            )
