@@ -234,7 +234,7 @@ class MainStack(Stack):
             "hosted_zone_id", self.hosted_zone.hosted_zone_id
         )
         POST_signup.lambda_function.add_environment(
-            "proxy_arn", proxy_lambda.function_arn
+            "proxy_lambda", proxy_lambda.function_name
         )
         proxy_lambda.grant_invoke(POST_signup.lambda_function)
         POST_signup.lambda_function.role.add_managed_policy(
@@ -275,7 +275,7 @@ class MainStack(Stack):
             "account_number", self.account_number
         )
         POST_ml_models.lambda_function.add_environment(
-            "proxy_arn", proxy_lambda.function_arn
+            "proxy_lambda", proxy_lambda.function_name
         )
         proxy_lambda.grant_invoke(POST_ml_models.lambda_function)
         self.models_bucket.grant_read_write(POST_ml_models.lambda_function)
@@ -473,7 +473,7 @@ class MainStack(Stack):
 
         return delete_user_lambda
 
-    def create_proxy_lambda(self) -> Tuple[lambda_.Function, LambdaQueueTuple]:
+    def create_proxy_lambda(self) -> Tuple[lambda_.Alias, LambdaQueueTuple]:
         execution_lambda = lambda_.DockerImageFunction(
             self,
             "execution_lambda",
@@ -494,7 +494,17 @@ class MainStack(Stack):
             },
             memory_size=3008,
         )
-        self.models_bucket.grant_read_write(execution_lambda)
+        execution_version = lambda_.Version(
+            self, "execution_version", lambda_=execution_lambda
+        )
+        execution_alias = lambda_.Alias(
+            self,
+            "execution_alias",
+            alias_name="prod",
+            version=execution_version,
+            provisioned_concurrent_executions=1,
+        )
+        self.models_bucket.grant_read_write(execution_alias)
 
         proxy_lambda = lambda_.Function(
             self,
@@ -508,10 +518,10 @@ class MainStack(Stack):
             timeout=Duration.seconds(30),
             environment={
                 "region_name": self.region_name,
-                "lambda": execution_lambda.function_arn,
+                "lambda": execution_alias.function_arn,
             },
         )
-        execution_lambda.grant_invoke(proxy_lambda)
+        execution_alias.grant_invoke(proxy_lambda)
         self.models.grant_read_data(proxy_lambda)
 
         logs_queue = sqs.Queue(
@@ -554,7 +564,7 @@ class MainStack(Stack):
         # SQS queue permission
         logs_queue.grant_send_messages(proxy_lambda)
 
-        return execution_lambda, LambdaQueueTuple(proxy_lambda, logs_queue)
+        return execution_alias, LambdaQueueTuple(proxy_lambda, logs_queue)
 
     def __init__(
         self,
@@ -596,7 +606,7 @@ class MainStack(Stack):
         self.main_cert = self.create_cert_for_domain()
 
         # proxy lambda + logs queue
-        self.execution_lambda, self.proxy = self.create_proxy_lambda()
+        self.execution_alias, self.proxy = self.create_proxy_lambda()
 
         # API Gateway and lambda-integrated routes
         self.api, rest = self.create_api_gateway_and_lambdas(self.proxy.lambda_function)
@@ -612,11 +622,3 @@ class MainStack(Stack):
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
         self.delete_user_lambda = self.create_delete_user_lambda()
-
-        # update POST_ml_models env var and permission
-        self.POST_ml_models.lambda_function.add_environment(
-            "proxy_lambda", self.proxy.lambda_function.function_name
-        )
-        self.POST_ml_models.lambda_function.add_environment(
-            "account_number", account_number
-        )

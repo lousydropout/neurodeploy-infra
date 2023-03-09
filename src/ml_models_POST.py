@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 
 _ACCOUNT_NUMBER = os.environ["account_number"]
 _REGION_NAME = os.environ["region_name"]
-PROXY_LAMBDA_ARN = os.environ["proxy_arn"]
+PROXY_LAMBDA_NAME = os.environ["proxy_lambda"]
 MODELS_S3_BUCKET = f"neurodeploy-models-{_REGION_NAME}"
 LOGS_S3_BUCKET = f"neurodeploy-logs-{_REGION_NAME}"
 
@@ -145,7 +145,7 @@ def handler(event: dict, context):
         api_id=api_id,
         resource_id=ping_id,
         rest_method="POST",
-        function_name=PROXY_LAMBDA_ARN,
+        function_name=PROXY_LAMBDA_NAME,
     )
 
     # write model to dynamodb
