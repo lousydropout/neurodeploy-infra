@@ -5,6 +5,7 @@ from aws_cdk import (
     RemovalPolicy,
     Stack,
 )
+from typing import List
 import aws_cdk as cdk
 from constructs import Construct
 
@@ -15,7 +16,7 @@ class BaseStack(Stack):
         scope: Construct,
         construct_id: str,
         prefix: str,
-        regions: list[str],
+        regions: List[str],
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)

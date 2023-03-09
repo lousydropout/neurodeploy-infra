@@ -1,4 +1,4 @@
-from typing import NamedTuple, Tuple
+from typing import NamedTuple, Tuple, List, Dict
 import aws_cdk as cdk
 from aws_cdk import (
     Duration,
@@ -87,9 +87,9 @@ class MainStack(Stack):
     def create_lambda(
         self,
         id: str,
-        tables: list[Tuple[dynamodb.Table, Permission]] = None,
-        buckets: list[Tuple[s3.Bucket, Permission]] = None,
-        layers: list[lambda_.LayerVersion] = None,
+        tables: List[Tuple[dynamodb.Table, Permission]] = None,
+        buckets: List[Tuple[s3.Bucket, Permission]] = None,
+        layers: List[lambda_.LayerVersion] = None,
         queue: sqs.Queue = None,
     ) -> lambda_.Function:
         # environment variables for the lambda function
@@ -138,10 +138,10 @@ class MainStack(Stack):
         resource_name: str,
         proxy: bool = False,
         filename_overwrite: str = None,
-        tables: list[Tuple[dynamodb.Table, Permission]] = None,
-        buckets: list[Tuple[s3.Bucket, Permission]] = None,
-        secrets: list[Tuple[str, sm.Secret]] = None,
-        layers: list[lambda_.LayerVersion] = None,
+        tables: List[Tuple[dynamodb.Table, Permission]] = None,
+        buckets: List[Tuple[s3.Bucket, Permission]] = None,
+        secrets: List[Tuple[str, sm.Secret]] = None,
+        layers: List[lambda_.LayerVersion] = None,
         create_queue: bool = False,
     ) -> LambdaQueueTuple:
         # create resource under self.api.root if it doesn't already exist
@@ -206,8 +206,8 @@ class MainStack(Stack):
 
     def create_api_gateway_and_lambdas(
         self, proxy_lambda: lambda_.Function
-    ) -> Tuple[apigw.RestApi, dict[str, LambdaQueueTuple]]:
-        self.apigw_resources: dict[str, dict] = {}
+    ) -> Tuple[apigw.RestApi, Dict[str, LambdaQueueTuple]]:
+        self.apigw_resources: Dict[str, Dict] = {}
 
         api = apigw.RestApi(
             self,
@@ -574,7 +574,7 @@ class MainStack(Stack):
         domain_name: str,
         region_name: str,
         account_number: str,
-        buckets: dict[str, s3.Bucket],
+        buckets: Dict[str, s3.Bucket],
         vpc: ec2.Vpc,
         lambda_image: str,
         **kwargs,
