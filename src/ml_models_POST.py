@@ -25,31 +25,12 @@ iam = boto3.client("iam")
 s3 = boto3.client("s3")
 
 
-def get_record(username: str, table_name: str) -> dict:
+def get_api_record(username: str) -> dict:
     key = ddb.to_({"pk": username, "sk": _REGION_NAME})
-    response = dynamodb_client.get_item(TableName=table_name, Key=key)
+    response = dynamodb_client.get_item(TableName=_APIS_TABLE_NAME, Key=key)
     return ddb.from_(response.get("Item", {}))
 
 
-def get_api_record(username: str) -> dict:
-    return get_record(username, _APIS_TABLE_NAME)
-
-
-def get_model_record(username: str) -> dict:
-    return get_record(username, _MODELS_TABLE_NAME)
-
-
-def write_api_object(username: str, payload: dict):
-    record = {"pk": username, "sk": _REGION_NAME, **payload}
-    _API_TABLE.put_item(Item=record)
-
-
-def write_model_object(username: str, model: str, sk: str, payload: dict):
-    record = {"pk": f"{username}|{model}", "sk": sk, **payload}
-    _MODEL_TABLE.put_item(Item=record)
-
-
-#
 def add_integration_method(
     api_id: str,
     resource_id: str,
@@ -101,7 +82,7 @@ def add_integration_method(
         raise
 
     # create deployment (apigw must contain method)
-    deployment = apigw.create_deployment(
+    _ = apigw.create_deployment(
         restApiId=api_id,
         stageName="prod",
         tracingEnabled=False,
@@ -110,6 +91,9 @@ def add_integration_method(
 
 @validation.check_authorization
 def handler(event: dict, context):
+    # body = json.loads(event["body"]) if event["body"] else {}
+    # query_params = event["query_params"]
+
     jwt_payload = event["jwt_payload"]
     username = jwt_payload["username"]
 
@@ -148,26 +132,28 @@ def handler(event: dict, context):
         function_name=PROXY_LAMBDA_NAME,
     )
 
-    # write model to dynamodb
-    payload = {"type": "PING", "location": None}
-    write_model_object(username=username, model=model_name, sk="ping", payload=payload)
-    write_model_object(username=username, model=model_name, sk="main", payload=payload)
-
-    # create presigned url for model
+    # upload file to s3
     key = f"{username}/{model_name}"
-    response = s3.generate_presigned_post(Bucket=MODELS_S3_BUCKET, Key=key)
-    print("Response: ", json.dumps(response))
-
-    # # Demonstrate how another Python program can use the presigned URL to upload a file
-    # with open(object_name, 'rb') as f:
-    #     files = {'file': (object_name, f)}
-    #     http_response = requests.post(response['url'], data=response['fields'], files=files)
-    # # If successful, returns HTTP status code 204
-    # logging.info(f'File upload HTTP status code: {http_response.status_code}')
+    try:
+        response = s3.upload_file(
+            Filename="./ping.py",
+            Bucket=MODELS_S3_BUCKET,
+            Key=key,
+            ExtraArgs={
+                "Metadata": {"model-type": "ping"},
+                "ContentType": "model/ping",
+            },
+        )
+    except Exception as err:
+        print(err)
+        try:
+            print(json.dumps(response, default=str))
+        except:
+            pass
 
     return {
         "isBase64Encoded": False,
         "statusCode": 201,
         # "headers": {"headerName": "headerValue"},
-        "body": json.dumps(response, default=str),
+        "body": json.dumps({}, default=str),
     }

@@ -1,25 +1,40 @@
+from typing import Dict
 import os
 import json
-from helpers import dynamodb as ddb
 import boto3
 
+_MODEL_TYPE = "model/"
+_MODEL_TYPE_LENGTH = len(_MODEL_TYPE)
+_PING = "ping"
+
 _REGION_NAME = os.environ["region_name"]
+MODELS_S3_BUCKET = f"neurodeploy-models-{_REGION_NAME}"
 EXECUTION_LAMBDA_ARN = os.environ["lambda"]
 
 lambda_ = boto3.client("lambda")
-dynamodb_client = boto3.client("dynamodb")
-dynamodb = boto3.resource("dynamodb")
-_MODELS_TABLE_NAME = "neurodeploy_Models"
-# _MODEL_TABLE = dynamodb.Table(_MODELS_TABLE_NAME)
+s3 = boto3.client("s3")
 
 
-_PING = "PING"
+def get_attributes(object_name: str) -> Dict:
+    response = s3.get_object(Bucket=MODELS_S3_BUCKET, Key=object_name)
 
+    # parse response
+    metadata = response["Metadata"]
+    content_type = response["ContentType"]
+    last_modified = response["LastModified"]
+    # last_modified_timestamp = last_modified.isoformat()
+    model_type = metadata.get("model-type") or "missing"
+    persistence_type = (
+        content_type[_MODEL_TYPE_LENGTH:]
+        if content_type.startswith(_MODEL_TYPE)
+        else "missing"
+    )
 
-def get_model_record(username: str, model: str, sk: str) -> dict:
-    key = ddb.to_({"pk": f"{username}|{model}", "sk": sk})
-    response = dynamodb_client.get_item(TableName=_MODELS_TABLE_NAME, Key=key)
-    return ddb.from_(response.get("Item", {}))
+    return {
+        "model_type": model_type,
+        "persistence_type": persistence_type,
+        "last_modified": last_modified,
+    }
 
 
 def parse_event(event: dict) -> dict:
@@ -65,17 +80,18 @@ def handler(event: dict, context) -> dict:
     host = parsed_event["headers"]["Host"]
     username = ".".join(host.split(".")[:-2])
     model_name = parsed_event["path"].lstrip("/")
+    model_location = f"{username}/{model_name}"
     payload = parsed_event["body"].get("payload") or ""
     print("username: ", username)
-    print("model_name: ", model_name)
+    print("model_location: ", model_location)
     print("payload: ", payload)
 
     # TODO: Grab model based on host from dynamodb
-    model = get_model_record(username=username, model=model_name, sk="main")
-    print("model: ", json.dumps(model, default=str))
+    model_attributes = get_attributes(object_name=model_location)
+    print("model_attributes: ", json.dumps(model_attributes, default=str))
 
     # If model is the initial PING, return "ok"
-    if model["type"] == _PING:
+    if model_attributes["model_type"] == _PING:
         return {"isBase64Encoded": False, "statusCode": 200, "body": "ok"}
 
     try:
@@ -86,7 +102,9 @@ def handler(event: dict, context) -> dict:
             Payload=json.dumps(
                 {
                     "payload": payload,
-                    "model": model,
+                    "model": model_location,
+                    "persistence_type": model_attributes["persistence_type"],
+                    "model_type": model_attributes["model_type"],
                 },
                 default=str,
             ).encode(),
