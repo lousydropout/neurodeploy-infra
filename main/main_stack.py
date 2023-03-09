@@ -494,9 +494,7 @@ class MainStack(Stack):
             },
             memory_size=3008,
         )
-        execution_version = lambda_.Version(
-            self, "execution_version", lambda_=execution_lambda
-        )
+        execution_version = execution_lambda.current_version
         execution_alias = lambda_.Alias(
             self,
             "execution_alias",
