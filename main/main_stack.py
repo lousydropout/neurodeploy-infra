@@ -489,9 +489,12 @@ class MainStack(Stack):
             timeout=Duration.seconds(28),
             environment={
                 "region_name": self.region_name,
+                "bucket": self.models_bucket.bucket_name,
+                "base_image": self.lambda_image_digest,
             },
             memory_size=3008,
         )
+        self.models_bucket.grant_read_write(execution_lambda)
 
         proxy_lambda = lambda_.Function(
             self,

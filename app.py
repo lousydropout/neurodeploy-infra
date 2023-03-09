@@ -13,10 +13,7 @@ _REGION_1 = "us-west-1"
 _REGION_2 = "us-east-2"
 _REGIONS = [_REGION_1, _REGION_2]
 
-_BASE_IMAGE = {
-    _REGION_1: "sha256:530aa8e894125aa5dfa8c0c8d3d21dac85c1191eb23542c76acc8a7b09b15ce7",
-    _REGION_2: "sha256:530aa8e894125aa5dfa8c0c8d3d21dac85c1191eb23542c76acc8a7b09b15ce7",
-}
+_BASE_IMAGE = "sha256:c8f22eea6bea2cfbec05c147b76fc04f0a5c0370b8fd7b46c77ac98f247989dd"
 
 app = cdk.App()
 
@@ -49,7 +46,7 @@ for region in _REGIONS:
         region_name=region,
         buckets={"models_bucket": base[f"RegionalBase-{region}"].models_bucket},
         vpc=base[f"RegionalBase-{region}"].vpc,
-        lambda_image=_BASE_IMAGE[region],
+        lambda_image=_BASE_IMAGE,
         env=cdk.Environment(account=_ACCOUNT, region=region),
     )
 
