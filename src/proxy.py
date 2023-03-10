@@ -77,6 +77,7 @@ def handler(event: dict, context) -> dict:
             ),
         }
 
+    # Further parse event
     host = parsed_event["headers"]["Host"]
     username = ".".join(host.split(".")[:-2])
     model_name = parsed_event["path"].lstrip("/")
@@ -86,7 +87,7 @@ def handler(event: dict, context) -> dict:
     print("model_location: ", model_location)
     print("payload: ", payload)
 
-    # TODO: Grab model based on host from dynamodb
+    # Get information from the s3 object's metadata
     model_attributes = get_attributes(object_name=model_location)
     print("model_attributes: ", json.dumps(model_attributes, default=str))
 
@@ -94,6 +95,7 @@ def handler(event: dict, context) -> dict:
     if model_attributes["model_type"] == _PING:
         return {"isBase64Encoded": False, "statusCode": 200, "body": "ok"}
 
+    # Create payload for the execution lambda
     lambda_payload = json.dumps(
         {
             "payload": payload,
@@ -105,6 +107,7 @@ def handler(event: dict, context) -> dict:
     )
     print("lambda_payload: ", lambda_payload)
 
+    # Invoke the execution lambda with the above payload
     try:
         lambda_response = lambda_.invoke(
             FunctionName=EXECUTION_LAMBDA_ARN,
@@ -119,11 +122,12 @@ def handler(event: dict, context) -> dict:
         status_code, result = 400, "Too Many Requests"
     else:
         status_code = 200
-        result = lambda_response["Payload"].read().decode()
+        response = lambda_response["Payload"].read().decode()
 
-    print("Result: ", result)
-    # response = json.loads(result)
+    print("Result: ", response)
+    result = json.loads(response)
 
+    # Parse and return result
     return {
         "isBase64Encoded": False,
         "statusCode": status_code,
@@ -133,5 +137,5 @@ def handler(event: dict, context) -> dict:
             "Access-Control-Allow-Methods": "POST",  # Allow only GET request
             "Access-Control-Allow-Headers": "Content-Type",
         },
-        "body": result,
+        "body": json.dumps({"output": result["output"]}, default=str),
     }
