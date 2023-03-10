@@ -9,25 +9,19 @@ _ACCOUNT_NUMBER = os.environ["account_number"]
 _REGION_NAME = os.environ["region_name"]
 PROXY_LAMBDA_NAME = os.environ["proxy_lambda"]
 MODELS_S3_BUCKET = f"neurodeploy-models-{_REGION_NAME}"
-LOGS_S3_BUCKET = f"neurodeploy-logs-{_REGION_NAME}"
 
 # dynamodb boto3
-dynamodb_client = boto3.client("dynamodb")
-dynamodb = boto3.resource("dynamodb")
+dynamodb = boto3.client("dynamodb")
 _APIS_TABLE_NAME = "neurodeploy_Apis"
-_API_TABLE = dynamodb.Table(_APIS_TABLE_NAME)
-_MODELS_TABLE_NAME = "neurodeploy_Models"
-_MODEL_TABLE = dynamodb.Table(_MODELS_TABLE_NAME)
 
 # other boto3 clients
 apigw = boto3.client("apigateway")
-iam = boto3.client("iam")
 s3 = boto3.client("s3")
 
 
 def get_api_record(username: str) -> dict:
     key = ddb.to_({"pk": username, "sk": _REGION_NAME})
-    response = dynamodb_client.get_item(TableName=_APIS_TABLE_NAME, Key=key)
+    response = dynamodb.get_item(TableName=_APIS_TABLE_NAME, Key=key)
     return ddb.from_(response.get("Item", {}))
 
 
@@ -91,9 +85,6 @@ def add_integration_method(
 
 @validation.check_authorization
 def handler(event: dict, context):
-    # body = json.loads(event["body"]) if event["body"] else {}
-    # query_params = event["query_params"]
-
     jwt_payload = event["jwt_payload"]
     username = jwt_payload["username"]
 
@@ -155,5 +146,8 @@ def handler(event: dict, context):
         "isBase64Encoded": False,
         "statusCode": 201,
         # "headers": {"headerName": "headerValue"},
-        "body": json.dumps({}, default=str),
+        "body": json.dumps(
+            {"message": f"POST /'{model_name}' route created."},
+            default=str,
+        ),
     }

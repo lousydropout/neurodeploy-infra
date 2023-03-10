@@ -48,7 +48,7 @@ class RegionalBaseStack(Stack):
                 ),
                 ec2.SubnetConfiguration(
                     name="private",
-                    subnet_type=ec2.SubnetType.PRIVATE_ISOLATED,
+                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
                 ),
             ],
             gateway_endpoints={
@@ -59,5 +59,4 @@ class RegionalBaseStack(Stack):
                     service=ec2.GatewayVpcEndpointAwsService.DYNAMODB
                 ),
             },
-            nat_gateways=0,
         )

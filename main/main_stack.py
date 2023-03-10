@@ -225,7 +225,8 @@ class MainStack(Stack):
         POST_signup = self.add(
             api,
             "POST",
-            "signup",
+            "sign-up",
+            filename_overwrite="signup_POST",
             tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
             create_queue=True,
         )
@@ -243,7 +244,8 @@ class MainStack(Stack):
         POST_signin = self.add(
             api,
             "POST",
-            "signin",
+            "sign-in",
+            filename_overwrite="signin_POST",
             tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
@@ -252,7 +254,7 @@ class MainStack(Stack):
             api,
             "GET",
             "access_tokens",
-            tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
+            tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -263,10 +265,9 @@ class MainStack(Stack):
             "ml_models",
             proxy=True,
             tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
+                (self.users, _READ),
+                (self.tokens, _READ),
                 (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
             ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
@@ -290,10 +291,9 @@ class MainStack(Stack):
             "ml_models",
             proxy=True,
             tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
-                (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
+                (self.users, _READ),
+                (self.tokens, _READ),
+                (self.apis, _READ),
             ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
@@ -310,18 +310,19 @@ class MainStack(Stack):
             "ml_models",
             proxy=True,
             tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
-                (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
+                (self.users, _READ),
+                (self.tokens, _READ),
+                (self.apis, _READ),
             ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-        PUT_ml_models.lambda_function.add_environment(
-            "proxy_arn", proxy_lambda.function_arn
+        PUT_ml_models.lambda_function.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                _APIGW_FULL_PERMISSION_POLICY
+            )
         )
-        proxy_lambda.grant_invoke(PUT_ml_models.lambda_function)
+        self.models_bucket.grant_read_write(PUT_ml_models.lambda_function)
 
         GET_ml_models = self.add(
             api,
@@ -329,20 +330,15 @@ class MainStack(Stack):
             "ml_models",
             proxy=True,
             tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
-                (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
+                (self.users, _READ),
+                (self.tokens, _READ),
+                (self.apis, _READ),
                 (self.usages, _READ_WRITE),
             ],
-            buckets=[(self.models_bucket, _READ_WRITE)],
+            buckets=[(self.models_bucket, _READ)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-        GET_ml_models.lambda_function.add_environment(
-            "proxy_arn", proxy_lambda.function_arn
-        )
-        proxy_lambda.grant_invoke(GET_ml_models.lambda_function)
 
         GET_list_of_ml_models = self.add(
             api,
@@ -350,13 +346,12 @@ class MainStack(Stack):
             "ml_models",
             filename_overwrite="ml_models_list_GET",
             tables=[
-                (self.users, _READ_WRITE),
-                (self.tokens, _READ_WRITE),
-                (self.apis, _READ_WRITE),
-                (self.models, _READ_WRITE),
-                (self.usages, _READ_WRITE),
+                (self.users, _READ),
+                (self.tokens, _READ),
+                (self.apis, _READ),
+                (self.usages, _READ),
             ],
-            buckets=[(self.models_bucket, _READ_WRITE)],
+            buckets=[(self.models_bucket, _READ)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -493,6 +488,7 @@ class MainStack(Stack):
                 "base_image": self.lambda_image_digest,
             },
             memory_size=3008,
+            security_groups=[self.sg],
         )
         execution_version = execution_lambda.current_version
         execution_alias = lambda_.Alias(
@@ -518,6 +514,7 @@ class MainStack(Stack):
                 "region_name": self.region_name,
                 "lambda": execution_alias.function_arn,
             },
+            security_groups=[self.sg],
         )
         execution_alias.grant_invoke(proxy_lambda)
         self.models.grant_read_data(proxy_lambda)
@@ -564,6 +561,20 @@ class MainStack(Stack):
 
         return execution_alias, LambdaQueueTuple(proxy_lambda, logs_queue)
 
+    def create_security_group(self) -> ec2.SecurityGroup:
+        sg = ec2.SecurityGroup(
+            self,
+            "proxy_lambda_sg",
+            vpc=self.vpc,
+            security_group_name="proxy_lambda_sg",
+            allow_all_outbound=True,
+        )
+        sg.connections.allow_internally(
+            port_range=ec2.Port.all_traffic(),
+            description="Allow all traffic from the same security group",
+        )
+        return sg
+
     def __init__(
         self,
         scope: Construct,
@@ -589,7 +600,7 @@ class MainStack(Stack):
 
         self.vpc = vpc
         self.subnets = self.vpc.select_subnets(
-            subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
+            subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
         )
 
         self.lambda_image_digest = lambda_image
@@ -602,6 +613,9 @@ class MainStack(Stack):
         # DNS
         self.hosted_zone = self.import_hosted_zone()
         self.main_cert = self.create_cert_for_domain()
+
+        # security group for proxy lambda & execution lambda
+        self.sg = self.create_security_group()
 
         # proxy lambda + logs queue
         self.execution_alias, self.proxy = self.create_proxy_lambda()

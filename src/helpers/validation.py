@@ -118,6 +118,7 @@ def error_response(message: str) -> dict:
 def check_authorization(func):
     @functools.wraps(func)
     def f(event: dict, context):
+        print(f"Event: {json.dumps(event)}")
         # Parse event
         headers = event.get("headers") or []
         request_context = event["requestContext"]
@@ -149,9 +150,9 @@ def check_authorization(func):
             "http_method": event["httpMethod"],
             "path": event["path"],
             "headers": headers,
-            "body": event["body"],
-            "query_params": event["queryStringParameters"],
-            "path_params": event["pathParameters"],
+            "body": event.get("body") or "{}",
+            "query_params": event.get("queryStringParameters") or {},
+            "path_params": event.get("pathParameters") or {},
             "jwt_payload": payload,
             "identity": request_context["identity"],
             "request_epoch_time": request_context["requestTimeEpoch"],

@@ -39,9 +39,8 @@ def delete_models(username: str, model_name: str) -> dict:
 
 def get_resource_id(api_id: str, model_name: str) -> str:
     response = apigw.get_resources(restApiId=api_id)
-    _id = next(
-        y["id"] for y in response["items"] if y.get("pathPart", "") == model_name
-    )
+    x = [y for y in response["items"] if y.get("pathPart", "") == model_name]
+    _id = x[0] if x else None
     return _id
 
 
@@ -55,6 +54,8 @@ def delete_model(username: str, model_name: str):
     print("Api id: ", api_id)
     # get resource id for model_name
     resource_id = get_resource_id(api_id=api_id, model_name=model_name)
+    if not resource_id:
+        raise Exception(f"Invalid model name: model '{model_name}' does not exist.")
     print("resource_id: ", resource_id)
     # delete resource
     response = apigw.delete_resource(restApiId=api_id, resourceId=resource_id)

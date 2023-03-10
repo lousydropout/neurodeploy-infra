@@ -94,20 +94,22 @@ def handler(event: dict, context) -> dict:
     if model_attributes["model_type"] == _PING:
         return {"isBase64Encoded": False, "statusCode": 200, "body": "ok"}
 
+    lambda_payload = json.dumps(
+        {
+            "payload": payload,
+            "model": model_location,
+            "persistence_type": model_attributes["persistence_type"],
+            "model_type": model_attributes["model_type"],
+        },
+        default=str,
+    )
+    print("lambda_payload: ", lambda_payload)
+
     try:
         lambda_response = lambda_.invoke(
             FunctionName=EXECUTION_LAMBDA_ARN,
             InvocationType="RequestResponse",
-            LogType="Tail",
-            Payload=json.dumps(
-                {
-                    "payload": payload,
-                    "model": model_location,
-                    "persistence_type": model_attributes["persistence_type"],
-                    "model_type": model_attributes["model_type"],
-                },
-                default=str,
-            ).encode(),
+            Payload=lambda_payload,
         )
     except lambda_.exceptions.TooManyRequestsException as err:
         print(err)
@@ -119,7 +121,8 @@ def handler(event: dict, context) -> dict:
         status_code = 200
         result = lambda_response["Payload"].read().decode()
 
-    response = {"result": result}
+    print("Result: ", result)
+    # response = json.loads(result)
 
     return {
         "isBase64Encoded": False,
@@ -130,5 +133,5 @@ def handler(event: dict, context) -> dict:
             "Access-Control-Allow-Methods": "POST",  # Allow only GET request
             "Access-Control-Allow-Headers": "Content-Type",
         },
-        "body": json.dumps(response, default=str),
+        "body": result,
     }
