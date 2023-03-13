@@ -133,8 +133,8 @@ def handler(event: dict, context) -> dict:
     print("done")
 
     # 3. Create auth token & log record
-    print("3. creating access key and access secret", end=". . . ")
-    access_token = uuid().hex
+    print("3. creating default access key and access secret", end=". . . ")
+    access_token = "default"
     secret_key = sha256(uuid().hex.encode(UTF_8)).hexdigest()
     try:
         add_token_to_tokens_table(username, access_token, secret_key)
