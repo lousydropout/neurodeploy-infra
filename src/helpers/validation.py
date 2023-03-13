@@ -77,11 +77,11 @@ def validate_credentials(username: str, password: str) -> Tuple[bool, dict]:
     return True, item
 
 
-def get_token_record(access_key: str) -> Dict[str, str]:
+def get_token_record(access_token: str) -> Dict[str, str]:
     try:
         response = dynamodb_client.get_item(
             TableName=_TOKENS_TABLE_NAME,
-            Key=ddb.to_({"pk": access_key, "sk": "active"}),
+            Key=ddb.to_({"pk": access_token, "sk": "active"}),
         )
     except dynamodb_client.exceptions.ResourceNotFoundException:
         return False, {}
@@ -90,15 +90,15 @@ def get_token_record(access_key: str) -> Dict[str, str]:
 
 
 def validate_access_token(headers: Dict[str, str]) -> Tuple[bool, dict]:
-    access_key = headers["access_key"]
-    access_secret = headers["access_secret"]
+    access_token = headers["access_token"]
+    secret_key = headers["secret_key"]
 
-    record = get_token_record(access_key)
+    record = get_token_record(access_token)
     salt = record["salt"]
-    hashed = record["access_secret_hash"]
+    hashed = record["secret_key_hash"]
     username = record["username"]
 
-    hashed_password = sha256((access_secret + salt).encode(UTF_8)).hexdigest()
+    hashed_password = sha256((secret_key + salt).encode(UTF_8)).hexdigest()
 
     if hashed == hashed_password:
         return True, {"username": username, "exp": None}
@@ -133,8 +133,8 @@ def check_authorization(func):
         # If header validation failed, try validating access token
         if (
             not valid
-            and "access_key" in headers
-            and len(headers.get("access_secret", "")) > 10
+            and "access_token" in headers
+            and len(headers.get("secret_key", "")) > 10
         ):
             valid, payload = validate_access_token(headers)
             print("Found access key pair in headers. Results: ", valid, payload)

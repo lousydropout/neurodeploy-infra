@@ -64,16 +64,14 @@ def add_user_to_users_table(username: str, payload: dict):
         raise Exception(f"""The username "{username}" already exists.""")
 
 
-def add_token_to_tokens_table(username: str, access_key: str, access_secret: str):
+def add_token_to_tokens_table(username: str, access_token: str, secret_key: str):
     try:
         salt = uuid().hex
         record = {
-            "pk": access_key,
+            "pk": access_token,
             "sk": "active",
             "username": username,
-            "access_secret_hash": sha256(
-                (access_secret + salt).encode(UTF_8)
-            ).hexdigest(),
+            "secret_key_hash": sha256((secret_key + salt).encode(UTF_8)).hexdigest(),
             "salt": salt,
             "description": "default access key + access secret pair",
         }
@@ -82,7 +80,7 @@ def add_token_to_tokens_table(username: str, access_key: str, access_secret: str
             ConditionExpression="attribute_not_exists(pk) AND attribute_not_exists(sk)",
         )
     except dynamodb_client.exceptions.ConditionalCheckFailedException:
-        raise Exception(f"""The access key for "{access_key}" already exists.""")
+        raise Exception(f"""The access key for "{access_token}" already exists.""")
 
 
 def get_number_of_users() -> int:
@@ -136,10 +134,10 @@ def handler(event: dict, context) -> dict:
 
     # 3. Create auth token & log record
     print("3. creating access key and access secret", end=". . . ")
-    access_key = uuid().hex
-    access_secret = sha256(uuid().hex.encode(UTF_8)).hexdigest()
+    access_token = uuid().hex
+    secret_key = sha256(uuid().hex.encode(UTF_8)).hexdigest()
     try:
-        add_token_to_tokens_table(username, access_key, access_secret)
+        add_token_to_tokens_table(username, access_token, secret_key)
     except Exception as err:
         print("failed")
         print(err)
@@ -165,8 +163,8 @@ def handler(event: dict, context) -> dict:
         "headers": {"content-type": "application/json"},
         "body": json.dumps(
             {
-                "access_key": access_key,
-                "access_secret": access_secret,
+                "access_token": access_token,
+                "secret_key": secret_key,
             }
         ),
     }
