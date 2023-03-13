@@ -1,3 +1,4 @@
+import json
 from helpers import validation
 
 
@@ -7,5 +8,5 @@ def handler(event: dict, context):
         "isBase64Encoded": False,
         "statusCode": 200,
         "headers": {"headerName": "headerValue"},
-        "body": "valid token",
+        "body": json.dumps({"message": "valid token"}),
     }

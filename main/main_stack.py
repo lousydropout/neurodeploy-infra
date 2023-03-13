@@ -293,7 +293,7 @@ class MainStack(Stack):
             tables=[
                 (self.users, _READ),
                 (self.tokens, _READ),
-                (self.apis, _READ),
+                (self.apis, _READ_WRITE),
             ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
@@ -486,6 +486,7 @@ class MainStack(Stack):
                 "region_name": self.region_name,
                 "bucket": self.models_bucket.bucket_name,
                 "base_image": self.lambda_image_digest,
+                "domain_name": self.domain_name,
             },
             memory_size=3008,
             security_groups=[self.sg],

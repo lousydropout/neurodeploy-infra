@@ -1,6 +1,7 @@
 from typing import Dict
 import os
 import json
+import re
 import boto3
 
 _MODEL_TYPE = "model/"
@@ -10,6 +11,9 @@ _PING = "ping"
 _REGION_NAME = os.environ["region_name"]
 MODELS_S3_BUCKET = f"neurodeploy-models-{_REGION_NAME}"
 EXECUTION_LAMBDA_ARN = os.environ["lambda"]
+
+DOMAIN_NAME = os.environ["domain_name"]
+
 
 lambda_ = boto3.client("lambda")
 s3 = boto3.client("s3")
