@@ -20,45 +20,33 @@ iam = boto3.client("iam")
 s3 = boto3.client("s3")
 
 
-def get_model_sort_keys(username: str, model_name: str) -> list[dict]:
-    statement = (
-        f"""SELECT sk FROM {_MODELS_TABLE_NAME} WHERE pk='{username}|{model_name}';"""
-    )
-    response = dynamodb_client.execute_statement(Statement=statement)
-    return [ddb.from_(x) for x in response.get("Items", [])]
+# def get_model_sort_keys(username: str, model_name: str) -> list[dict]:
+#     statement = (
+#         f"""SELECT sk FROM {_MODELS_TABLE_NAME} WHERE pk='{username}|{model_name}';"""
+#     )
+#     response = dynamodb_client.execute_statement(Statement=statement)
+#     return [ddb.from_(x) for x in response.get("Items", [])]
 
 
-def delete_models(username: str, model_name: str) -> dict:
-    sort_keys = get_model_sort_keys(username, model_name)
-    statement = f"""DELETE FROM {_MODELS_TABLE_NAME} WHERE pk='{username}|{model_name}' AND sk='{{sk}}';"""
-    statements = [{"Statement": statement.format(sk=x["sk"])} for x in sort_keys]
-    print("Statements: ", statements)
-    response = dynamodb_client.batch_execute_statement(Statements=statements)
-    return response
+# def delete_models(username: str, model_name: str) -> dict:
+#     sort_keys = get_model_sort_keys(username, model_name)
+#     statement = f"""DELETE FROM {_MODELS_TABLE_NAME} WHERE pk='{username}|{model_name}' AND sk='{{sk}}';"""
+#     statements = [{"Statement": statement.format(sk=x["sk"])} for x in sort_keys]
+#     print("Statements: ", statements)
+#     response = dynamodb_client.batch_execute_statement(Statements=statements)
+#     return response
 
 
-def get_resource_id(api_id: str, model_name: str) -> str:
-    response = apigw.get_resources(restApiId=api_id)
-    x = [y for y in response["items"] if y.get("pathPart", "") == model_name]
-    _id = x[0] if x else None
-    return _id
+# def get_resource_id(api_id: str, model_name: str) -> str:
+#     response = apigw.get_resources(restApiId=api_id)
+#     x = [y for y in response["items"] if y.get("pathPart", "") == model_name]
+#     _id = x[0] if x else None
+#     return _id
 
 
 def delete_model(username: str, model_name: str):
-    # get restapi_id for user
-    statement = f"""SELECT api_id FROM {_APIS_TABLE_NAME} WHERE pk='{username}' AND sk='resources';"""
-    response = dynamodb_client.execute_statement(Statement=statement)
-    api_ids = [ddb.from_(x) for x in response.get("Items", [])]
-    print("Api ids: ", api_ids)
-    api_id = next(y["api_id"] for y in api_ids if "api_id" in y)
-    print("Api id: ", api_id)
-    # get resource id for model_name
-    resource_id = get_resource_id(api_id=api_id, model_name=model_name)
-    if not resource_id:
-        raise Exception(f"Invalid model name: model '{model_name}' does not exist.")
-    print("resource_id: ", resource_id)
-    # delete resource
-    response = apigw.delete_resource(restApiId=api_id, resourceId=resource_id)
+    key = f"{username}/{model_name}"
+    response = s3.delete_object(Bucket=MODELS_S3_BUCKET, Key=key)
     return response
 
 
@@ -82,6 +70,7 @@ def handler(event: dict, context):
                 {"error_message": f"Failed to delete model {model_name}"}, default=str
             ),
         }
+    print(json.dumps(x))
 
     return {
         "isBase64Encoded": False,

@@ -10,7 +10,7 @@ persistence_type = "h5"
 
 # Create model
 http_response = requests.put(
-    url=f"https://api.playingwithml.com/ml_models/{model_name}?model_type={model_type}&persistence_type={persistence_type}",
+    url=f"https://user-api.playingwithml.com/ml_models/{model_name}?model_type={model_type}&persistence_type={persistence_type}",
     headers={"Authorization": f"Bearer {token}"},
 )
 x = http_response.json()
