@@ -632,6 +632,25 @@ class MainStack(Stack):
         self.GET_list_of_ml_models = rest["GET_list_of_ml_models"]
         self.DELETE_ml_models = rest["DELETE_ml_models"]
 
+        # Add proxy lambda to apigw
+        self.proxy_resource = self.api.root.add_proxy(
+            any_method=False,
+            default_integration=apigw.Integration(
+                type=apigw.IntegrationType.AWS_PROXY,
+                integration_http_method="POST",
+                uri=(
+                    f"arn:aws:apigateway:{self.region_name}:"
+                    "lambda:path/2015-03-31/functions/arn:"
+                    f"aws:lambda:{self.region_name}:{self.account_number}:function:"
+                    f"{self.proxy.lambda_function.function_name}/invocations"
+                ),
+            ),
+        )
+        self.proxy_resource.add_method(
+            http_method="POST",
+            integration=apigw.LambdaIntegration(self.proxy.lambda_function),
+        )
+
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
         self.delete_user_lambda = self.create_delete_user_lambda()

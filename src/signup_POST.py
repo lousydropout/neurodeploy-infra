@@ -133,7 +133,7 @@ def handler(event: dict, context) -> dict:
     print("done")
 
     # 3. Create auth token & log record
-    print("3. creating default access key and access secret", end=". . . ")
+    print("3. creating default access token and secret key", end=". . . ")
     access_token = "default"
     secret_key = sha256(uuid().hex.encode(UTF_8)).hexdigest()
     try:
@@ -147,14 +147,14 @@ def handler(event: dict, context) -> dict:
     print("done")
 
     # 4. Send event to queue to create api for new user
-    payload = {"domain_name": _DOMAIN_NAME, "username": username}
-    response = sqs.send_message(
-        QueueUrl=_QUEUE,
-        MessageGroupId=username,
-        MessageDeduplicationId=str(uuid()),
-        MessageBody=json.dumps(payload),
-    )
-    print("Sqs send messsage response: ", json.dumps(response, default=str))
+    # payload = {"domain_name": _DOMAIN_NAME, "username": username}
+    # response = sqs.send_message(
+    #     QueueUrl=_QUEUE,
+    #     MessageGroupId=username,
+    #     MessageDeduplicationId=str(uuid()),
+    #     MessageBody=json.dumps(payload),
+    # )
+    # print("Sqs send messsage response: ", json.dumps(response, default=str))
 
     # 5. Return response
     response = {
