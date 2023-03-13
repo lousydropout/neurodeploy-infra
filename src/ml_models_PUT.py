@@ -64,12 +64,12 @@ def validate_params(
     errors = []
 
     # confirm that the model has already been created
-    api_id = get_api_id(username)
-    response = apigw.get_resources(restApiId=api_id)
-    exists = any(y for y in response["items"] if y.get("pathPart", "") == model_name)
-    if not exists:
-        # TODO: Just create the model for them here
-        errors.append(f"Model '{model_name}' has not been created yet.")
+    # api_id = get_api_id(username)
+    # response = apigw.get_resources(restApiId=api_id)
+    # exists = any(y for y in response["items"] if y.get("pathPart", "") == model_name)
+    # if not exists:
+    #     # TODO: Just create the model for them here
+    #     errors.append(f"Model '{model_name}' has not been created yet.")
 
     # validate model_type value
     if not model_type:

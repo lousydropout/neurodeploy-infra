@@ -17,7 +17,10 @@ s3 = boto3.client("s3")
 
 
 def get_attributes(object_name: str) -> dict:
-    response = s3.get_object(Bucket=MODELS_S3_BUCKET, Key=object_name)
+    try:
+        response = s3.get_object(Bucket=MODELS_S3_BUCKET, Key=object_name)
+    except s3.exceptions.NoSuchKey:
+        raise Exception("The resource you requested does not exist.")
 
     # parse response
     metadata = response["Metadata"]
@@ -93,7 +96,21 @@ def handler(event: dict, context) -> dict:
     print("payload: ", payload)
 
     # Get information from the s3 object's metadata
-    model_attributes = get_attributes(object_name=model_location)
+    try:
+        model_attributes = get_attributes(object_name=model_location)
+    except Exception as err:
+        return {
+            "isBase64Encoded": False,
+            "statusCode": 404,
+            "headers": {
+                "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
+                "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
+                "Access-Control-Allow-Methods": "POST",  # Allow only GET request
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+            "body": json.dumps({"error_message": str(err)}, default=str),
+        }
+
     print("model_attributes: ", json.dumps(model_attributes, default=str))
 
     # If model is the initial PING, return "ok"

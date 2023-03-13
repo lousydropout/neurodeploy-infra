@@ -12,6 +12,7 @@ from aws_cdk import (
     aws_lambda as lambda_,
     aws_lambda_event_sources as event_sources,
     aws_route53 as route53,
+    aws_route53_targets as target,
     aws_s3 as s3,
     aws_secretsmanager as sm,
     aws_sqs as sqs,
@@ -41,9 +42,8 @@ _ROUTE_53_FULL_PERMISSION_POLICY = "AmazonRoute53FullAccess"
 _APIGW_FULL_PERMISSION_POLICY = "AmazonAPIGatewayAdministrator"
 _IAM_FULL_PERMISSION_POLICY = "IAMFullAccess"
 
-_INVOKE_FUNCTION = "lambda:InvokeFunction"
-
 _JWT_SECRET_NAME = "jwt_secret"
+_USER_API = "user-api"
 
 
 class MainStack(Stack):
@@ -219,7 +219,7 @@ class MainStack(Stack):
             f"{self.domain_name}_domain_name",
             mapping=api,
             certificate=self.main_cert,
-            domain_name=f"api.{self.domain_name}",
+            domain_name=f"{_USER_API}.{self.domain_name}",
         )
 
         POST_signup = self.add(
@@ -258,32 +258,6 @@ class MainStack(Stack):
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-
-        POST_ml_models = self.add(
-            api,
-            "POST",
-            "ml_models",
-            proxy=True,
-            tables=[
-                (self.users, _READ),
-                (self.tokens, _READ),
-                (self.apis, _READ_WRITE),
-            ],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-        )
-        POST_ml_models.lambda_function.add_environment(
-            "account_number", self.account_number
-        )
-        POST_ml_models.lambda_function.add_environment(
-            "proxy_lambda", proxy_lambda.function_name
-        )
-        proxy_lambda.grant_invoke(POST_ml_models.lambda_function)
-        self.models_bucket.grant_read_write(POST_ml_models.lambda_function)
-        for policy in [_IAM_FULL_PERMISSION_POLICY, _APIGW_FULL_PERMISSION_POLICY]:
-            POST_ml_models.lambda_function.role.add_managed_policy(
-                iam.ManagedPolicy.from_aws_managed_policy_name(policy)
-            )
 
         DELETE_ml_models = self.add(
             api,
@@ -365,13 +339,13 @@ class MainStack(Stack):
 
         self.api_record = route53.CfnRecordSet(
             self,
-            "ApiARecord",
-            name=f"api.{self.domain_name}",
+            "UserApiARecord",
+            name=f"{_USER_API}.{self.domain_name}",
             type="A",
             alias_target=target,
             hosted_zone_id=self.hosted_zone.hosted_zone_id,
             weight=100,
-            set_identifier=cdk.Aws.STACK_NAME,
+            set_identifier=f"user-{cdk.Aws.STACK_NAME}",
         )
 
         return (
@@ -380,7 +354,6 @@ class MainStack(Stack):
                 "POST_signup": POST_signup,
                 "POST_signin": POST_signin,
                 "GET_access_tokens": GET_access_tokens,
-                "POST_ml_models": POST_ml_models,
                 "PUT_ml_models": PUT_ml_models,
                 "DELETE_ml_models": DELETE_ml_models,
                 "GET_ml_models": GET_ml_models,
@@ -530,22 +503,6 @@ class MainStack(Stack):
             deduplication_scope=sqs.DeduplicationScope.MESSAGE_GROUP,
         )
 
-        # # Allow proxy lambda to invoke ANY lambda
-        proxy_lambda.add_to_role_policy(
-            iam.PolicyStatement(actions=[_INVOKE_FUNCTION], resources=["*"])
-        )
-
-        # Resource policy allowing API Gateway permission
-        # Note: this allows any API Gateways from this account to invoke this proxy lambda
-        _ = lambda_.CfnPermission(
-            self,
-            "apigw_invoke_lambda_permission",
-            action=_INVOKE_FUNCTION,
-            function_name=proxy_lambda.function_arn,
-            principal="apigateway.amazonaws.com",
-            source_account=self.account_number,
-        )
-
         # S3 permission
         self.models_bucket.grant_read(proxy_lambda)
         self.logs_bucket.grant_read_write(proxy_lambda)
@@ -559,6 +516,27 @@ class MainStack(Stack):
 
         # SQS queue permission
         logs_queue.grant_send_messages(proxy_lambda)
+
+        # Lambda Rest API
+        proxy_api = apigw.LambdaRestApi(
+            self,
+            "proxy_api",
+            handler=proxy_lambda,
+            proxy=True,
+            domain_name=apigw.DomainNameOptions(
+                certificate=self.main_cert,
+                domain_name=f"api.{self.domain_name}",
+                endpoint_type=apigw.EndpointType.REGIONAL,
+            ),
+            deploy=True,
+        )
+        route53.ARecord(
+            self,
+            "proxy-api-a-record",
+            zone=self.hosted_zone,
+            target=route53.RecordTarget.from_alias(target.ApiGateway(api=proxy_api)),
+            record_name=f"api.{self.domain_name}",
+        )
 
         return execution_alias, LambdaQueueTuple(proxy_lambda, logs_queue)
 
@@ -626,30 +604,10 @@ class MainStack(Stack):
         self.POST_signup = rest["POST_signup"]
         self.POST_signin = rest["POST_signin"]
         self.GET_access_token = rest["GET_access_tokens"]
-        self.POST_ml_models = rest["POST_ml_models"]
         self.PUT_ml_models = rest["PUT_ml_models"]
         self.GET_ml_models = rest["GET_ml_models"]
         self.GET_list_of_ml_models = rest["GET_list_of_ml_models"]
         self.DELETE_ml_models = rest["DELETE_ml_models"]
-
-        # Add proxy lambda to apigw
-        self.proxy_resource = self.api.root.add_proxy(
-            any_method=False,
-            default_integration=apigw.Integration(
-                type=apigw.IntegrationType.AWS_PROXY,
-                integration_http_method="POST",
-                uri=(
-                    f"arn:aws:apigateway:{self.region_name}:"
-                    "lambda:path/2015-03-31/functions/arn:"
-                    f"aws:lambda:{self.region_name}:{self.account_number}:function:"
-                    f"{self.proxy.lambda_function.function_name}/invocations"
-                ),
-            ),
-        )
-        self.proxy_resource.add_method(
-            http_method="POST",
-            integration=apigw.LambdaIntegration(self.proxy.lambda_function),
-        )
 
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
