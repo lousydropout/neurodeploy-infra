@@ -250,19 +250,46 @@ class MainStack(Stack):
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
+
+        # access-tokens
+        # Note: need read-write permission for GET due to use of PartiQL
         GET_access_tokens = self.add(
             api,
             "GET",
-            "access_tokens",
+            "access-tokens",
+            filename_overwrite="access_tokens_GET",
             tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
 
+        POST_access_tokens = self.add(
+            api,
+            "POST",
+            "access-tokens",
+            filename_overwrite="access_tokens_POST",
+            tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+
+        DELETE_access_tokens = self.add(
+            api,
+            "DELETE",
+            "access-tokens",
+            filename_overwrite="access_tokens_DELETE",
+            proxy=True,
+            tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+
+        # ml-models
         DELETE_ml_models = self.add(
             api,
             "DELETE",
-            "ml_models",
+            "ml-models",
+            filename_overwrite="ml_models_DELETE",
             proxy=True,
             tables=[
                 (self.users, _READ),
@@ -281,7 +308,8 @@ class MainStack(Stack):
         PUT_ml_models = self.add(
             api,
             "PUT",
-            "ml_models",
+            "ml-models",
+            filename_overwrite="ml_models_PUT",
             proxy=True,
             tables=[
                 (self.users, _READ),
@@ -301,7 +329,8 @@ class MainStack(Stack):
         GET_ml_models = self.add(
             api,
             "GET",
-            "ml_models",
+            "ml-models",
+            filename_overwrite="ml_models_GET",
             proxy=True,
             tables=[
                 (self.users, _READ),
@@ -317,7 +346,7 @@ class MainStack(Stack):
         GET_list_of_ml_models = self.add(
             api,
             "GET",
-            "ml_models",
+            "ml-models",
             filename_overwrite="ml_models_list_GET",
             tables=[
                 (self.users, _READ),

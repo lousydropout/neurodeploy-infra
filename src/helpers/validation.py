@@ -81,12 +81,16 @@ def get_token_record(access_token: str) -> Dict[str, str]:
     try:
         response = dynamodb_client.get_item(
             TableName=_TOKENS_TABLE_NAME,
-            Key=ddb.to_({"pk": access_token, "sk": "active"}),
+            Key=ddb.to_({"pk": f"access_token|{access_token}", "sk": "access_token"}),
         )
     except dynamodb_client.exceptions.ResourceNotFoundException:
         return False, {}
 
-    return ddb.from_(response.get("Item", {}))
+    items = ddb.from_(response.get("Item", {}))
+    if not items:
+        return False, {}
+
+    return items
 
 
 def validate_access_token(headers: Dict[str, str]) -> Tuple[bool, dict]:
@@ -146,6 +150,7 @@ def check_authorization(func):
             return event["response"]
 
         # Log event and pass into lambda handler
+        username = payload["username"]
         parsed_event = {
             "http_method": event["httpMethod"],
             "path": event["path"],
@@ -153,7 +158,7 @@ def check_authorization(func):
             "body": event.get("body") or "{}",
             "query_params": event.get("queryStringParameters") or {},
             "path_params": event.get("pathParameters") or {},
-            "jwt_payload": payload,
+            "username": username,
             "identity": request_context["identity"],
             "request_epoch_time": request_context["requestTimeEpoch"],
         }

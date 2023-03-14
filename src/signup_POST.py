@@ -67,9 +67,20 @@ def add_user_to_users_table(username: str, payload: dict):
 def add_token_to_tokens_table(username: str, access_token: str, secret_key: str):
     try:
         salt = uuid().hex
+        # username
         record = {
-            "pk": access_token,
-            "sk": "active",
+            "pk": f"username|{username}",
+            "sk": access_token,
+            "description": "default access key + access secret pair",
+        }
+        _TOKENS_TABLE.put_item(
+            Item=record,
+            ConditionExpression="attribute_not_exists(pk) AND attribute_not_exists(sk)",
+        )
+        # access-token
+        record = {
+            "pk": f"access_token|{access_token}",
+            "sk": "access_token",
             "username": username,
             "secret_key_hash": sha256((secret_key + salt).encode(UTF_8)).hexdigest(),
             "salt": salt,
@@ -134,7 +145,7 @@ def handler(event: dict, context) -> dict:
 
     # 3. Create auth token & log record
     print("3. creating default access token and secret key", end=". . . ")
-    access_token = "default"
+    access_token = uuid().hex
     secret_key = sha256(uuid().hex.encode(UTF_8)).hexdigest()
     try:
         add_token_to_tokens_table(username, access_token, secret_key)

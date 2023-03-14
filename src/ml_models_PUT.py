@@ -107,8 +107,7 @@ def validate_params(
 
 @validation.check_authorization
 def handler(event: dict, context) -> dict:
-    jwt_payload = event["jwt_payload"]
-    username = jwt_payload["username"]
+    username = event["username"]
 
     body = json.loads(event["body"])
     query_params = event["query_params"]

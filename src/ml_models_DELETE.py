@@ -52,9 +52,7 @@ def delete_model(username: str, model_name: str):
 
 @validation.check_authorization
 def handler(event: dict, context):
-    jwt_payload = event["jwt_payload"]
-    username = jwt_payload["username"]
-
+    username = event["username"]
     model_name = event["path_params"]["proxy"]
 
     # Delete resource
