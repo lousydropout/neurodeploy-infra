@@ -72,7 +72,7 @@ def handler(event: dict, context):
 
     return {
         "isBase64Encoded": False,
-        "statusCode": 204,
+        "statusCode": 200,
         # "headers": {"headerName": "headerValue"},
         "body": json.dumps({"message": f"deleted model {model_name}"}, default=str),
     }
