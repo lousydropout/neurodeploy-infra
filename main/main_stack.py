@@ -558,6 +558,7 @@ class MainStack(Stack):
                 endpoint_type=apigw.EndpointType.REGIONAL,
             ),
             deploy=True,
+            endpoint_types=[apigw.EndpointType.REGIONAL],
         )
         route53.ARecord(
             self,
