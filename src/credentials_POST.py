@@ -133,5 +133,13 @@ def handler(event: dict, context):
     return {
         "isBase64Encoded": False,
         "statusCode": 201,
-        "body": json.dumps({"access_token": access_token, "secret_key": secret_key}),
+        "body": json.dumps(
+            {
+                "access_token": access_token,
+                "secret_key": secret_key,
+                "credential_name": credential_name,
+                "expiration": None,
+                "description": description,
+            }
+        ),
     }
