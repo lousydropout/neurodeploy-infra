@@ -77,7 +77,7 @@ def add_token_to_tokens_table(
             "sk": credential_name,
             "access_token": access_token,
             "description": "default access key + access secret pair",
-            "exp": None,
+            "expiration": None,
         }
         _TOKENS_TABLE.put_item(
             Item=record,
@@ -92,6 +92,7 @@ def add_token_to_tokens_table(
             "secret_key_hash": sha256((secret_key + salt).encode(UTF_8)).hexdigest(),
             "salt": salt,
             "description": "default access key + access secret pair",
+            "expiration": None,
         }
         _TOKENS_TABLE.put_item(
             Item=record,
@@ -189,7 +190,7 @@ def handler(event: dict, context) -> dict:
                 "name": "default",
                 "access_token": access_token,
                 "secret_key": secret_key,
-                "exp": None,
+                "expiration": None,
             }
         ),
     }

@@ -20,6 +20,7 @@ def add_token_to_tokens_table(
     access_token: str,
     secret_key: str,
     description: str,
+    expiration: str,
 ):
     try:
         salt = uuid().hex
@@ -29,6 +30,7 @@ def add_token_to_tokens_table(
             "sk": credential_name,
             "access_token": access_token,
             "description": description,
+            "expiration": expiration,
         }
         _TOKENS_TABLE.put_item(
             Item=record,
@@ -40,6 +42,7 @@ def add_token_to_tokens_table(
             "sk": "access_token",
             "username": username,
             "credential_name": credential_name,
+            "expiration": expiration,
             "secret_key_hash": sha256((secret_key + salt).encode(UTF_8)).hexdigest(),
             "salt": salt,
             "description": description,
@@ -114,6 +117,7 @@ def handler(event: dict, context):
 
     access_token = uuid().hex
     secret_key = sha256(uuid().hex.encode(UTF_8)).hexdigest()
+    expiration = None
     try:
         response = add_token_to_tokens_table(
             username=username,
@@ -121,6 +125,7 @@ def handler(event: dict, context):
             access_token=access_token,
             secret_key=secret_key,
             description=description,
+            expiration=expiration,
         )
     except Exception as err:
         print("failed")
