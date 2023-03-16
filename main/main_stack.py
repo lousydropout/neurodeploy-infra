@@ -54,7 +54,6 @@ class MainStack(Stack):
         self.users: dynamodb.Table = self.import_dynamodb_table("Users")
         self.tokens: dynamodb.Table = self.import_dynamodb_table("Tokens")
         self.models: dynamodb.Table = self.import_dynamodb_table("Models")
-        self.apis: dynamodb.Table = self.import_dynamodb_table("Apis")
         self.usages: dynamodb.Table = self.import_dynamodb_table("Usages")
 
     def import_secrets(self):
@@ -251,13 +250,13 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
 
-        # access-tokens
+        # credentials
         # Note: need read-write permission for GET due to use of PartiQL
         GET_access_tokens = self.add(
             api,
             "GET",
-            "access-tokens",
-            filename_overwrite="access_tokens_GET",
+            "credentials",
+            filename_overwrite="credentials_GET",
             tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
@@ -266,8 +265,8 @@ class MainStack(Stack):
         POST_access_tokens = self.add(
             api,
             "POST",
-            "access-tokens",
-            filename_overwrite="access_tokens_POST",
+            "credentials",
+            filename_overwrite="credentials_POST",
             tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
@@ -276,8 +275,8 @@ class MainStack(Stack):
         DELETE_access_tokens = self.add(
             api,
             "DELETE",
-            "access-tokens",
-            filename_overwrite="access_tokens_DELETE",
+            "credentials",
+            filename_overwrite="credentials_DELETE",
             proxy=True,
             tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
@@ -291,11 +290,7 @@ class MainStack(Stack):
             "ml-models",
             filename_overwrite="ml_models_DELETE",
             proxy=True,
-            tables=[
-                (self.users, _READ),
-                (self.tokens, _READ),
-                (self.apis, _READ_WRITE),
-            ],
+            tables=[(self.users, _READ), (self.tokens, _READ)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -311,11 +306,7 @@ class MainStack(Stack):
             "ml-models",
             filename_overwrite="ml_models_PUT",
             proxy=True,
-            tables=[
-                (self.users, _READ),
-                (self.tokens, _READ),
-                (self.apis, _READ),
-            ],
+            tables=[(self.users, _READ), (self.tokens, _READ)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -335,7 +326,6 @@ class MainStack(Stack):
             tables=[
                 (self.users, _READ),
                 (self.tokens, _READ),
-                (self.apis, _READ),
                 (self.usages, _READ_WRITE),
             ],
             buckets=[(self.models_bucket, _READ)],
@@ -351,7 +341,6 @@ class MainStack(Stack):
             tables=[
                 (self.users, _READ),
                 (self.tokens, _READ),
-                (self.apis, _READ),
                 (self.usages, _READ),
             ],
             buckets=[(self.models_bucket, _READ)],
@@ -422,8 +411,6 @@ class MainStack(Stack):
             new_user_lambda.role.add_managed_policy(
                 iam.ManagedPolicy.from_aws_managed_policy_name(permission)
             )
-        self.apis.grant_read_write_data(new_user_lambda)
-        new_user_lambda.add_environment(self.apis.table_name, self.apis.table_arn)
 
         return new_user_lambda
 
@@ -465,8 +452,6 @@ class MainStack(Stack):
             delete_user_lambda.role.add_managed_policy(
                 iam.ManagedPolicy.from_aws_managed_policy_name(permission)
             )
-        self.apis.grant_read_write_data(delete_user_lambda)
-        delete_user_lambda.add_environment(self.apis.table_name, self.apis.table_arn)
 
         return delete_user_lambda
 
@@ -537,9 +522,6 @@ class MainStack(Stack):
         self.logs_bucket.grant_read_write(proxy_lambda)
 
         # DynamoDB permission
-        self.apis.grant_read_data(proxy_lambda)
-        proxy_lambda.add_environment(self.apis.table_name, self.apis.table_arn)
-
         self.usages.grant_full_access(proxy_lambda)
         proxy_lambda.add_environment(self.usages.table_name, self.usages.table_arn)
 

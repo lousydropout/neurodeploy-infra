@@ -29,7 +29,6 @@ class BaseStack(Stack):
         users = self.create_table("users_table", name="Users")
         tokens = self.create_table("tokens_table", name="Tokens")
         models = self.create_table("models_table", name="Models")
-        apis = self.create_table("apis_table", name="Apis")
         usages = self.create_table("usages_table", name="Usages")
 
         # Secrets

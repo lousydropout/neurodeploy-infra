@@ -22,9 +22,9 @@ def is_password_correct(password: str, salt: str, hashed: str) -> bool:
 
 def parse(event: dict) -> Tuple[dict, dict]:
     """Return a parsed version of the API Gateway event (with password salted and hashed)."""
-    # get body
-    body: dict[str, str] = json.loads(event["body"])
-    if "username" not in body or "password" not in body:
+    # get headers
+    headers: dict[str, str] = event.get("headers") or {}
+    if "username" not in headers or "password" not in headers:
         raise Exception(
             "One or more of the required fields, 'username' and 'password,' is/are missing."
         )
@@ -37,7 +37,6 @@ def parse(event: dict) -> Tuple[dict, dict]:
         "http_method": event["httpMethod"],
         "path": event["path"],
         "query_params": event["queryStringParameters"],
-        "headers": event["headers"],
         "protocol": request_context["protocol"],
         "domain_name": request_context["domainName"],
         "request_epoch_time": request_context["requestTimeEpoch"],
@@ -47,7 +46,7 @@ def parse(event: dict) -> Tuple[dict, dict]:
         "identity": identity,
     }
 
-    return body, parsed_event
+    return headers, parsed_event
 
 
 def get_user(username: str) -> str:
@@ -64,14 +63,14 @@ def get_error_response(err: Exception) -> dict:
         "isBase64Encoded": False,
         "statusCode": 400,
         "headers": {"content-type": "application/json"},
-        "body": json.dumps({"error": str(err)}),
+        "body": json.dumps({"errorMessage": str(err)}),
     }
 
 
 def handler(event: dict, context):
     # 1. Parse event
     try:
-        body, parsed_event = parse(event)
+        headers, parsed_event = parse(event)
         print(f"Event: {json.dumps(parsed_event)}")
     except Exception as err:
         print(err)
@@ -81,7 +80,7 @@ def handler(event: dict, context):
 
     # 2. Get record
     try:
-        user = get_user(body["username"])
+        user = get_user(headers["username"])
         print(f"User: {json.dumps(user, cls=DecimalEncoder)}")
     except Exception as err:
         print(err)
@@ -91,7 +90,7 @@ def handler(event: dict, context):
 
     # 3. Check if the password is correct
     if is_password_correct(
-        password=body["password"],
+        password=headers["password"],
         salt=user["salt"],
         hashed=user["hashed_password"],
     ):
@@ -103,7 +102,7 @@ def handler(event: dict, context):
 
     # 4. Create jwt
     print("create jwt token", end=". . . ")
-    token, exp = validation.create_api_token(username=body["username"])
+    token, exp = validation.create_api_token(username=headers["username"])
     print("done")
 
     # 5. Return jwt

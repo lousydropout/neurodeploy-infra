@@ -90,14 +90,16 @@ def get_token_record(access_token: str) -> Dict[str, str]:
     if not items:
         return False, {}
 
-    return items
+    return True, items
 
 
-def validate_access_token(headers: Dict[str, str]) -> Tuple[bool, dict]:
+def validate_credentials(headers: Dict[str, str]) -> Tuple[bool, dict]:
     access_token = headers["access_token"]
     secret_key = headers["secret_key"]
 
-    record = get_token_record(access_token)
+    success, record = get_token_record(access_token)
+    if not success:
+        return False, {}
     salt = record["salt"]
     hashed = record["secret_key_hash"]
     username = record["username"]
@@ -124,7 +126,7 @@ def check_authorization(func):
     def f(event: dict, context):
         print(f"Event: {json.dumps(event)}")
         # Parse event
-        headers = event.get("headers") or []
+        headers = event.get("headers") or {}
         request_context = event["requestContext"]
 
         # Validate header
@@ -132,6 +134,7 @@ def check_authorization(func):
         if "Authorization" in headers:
             auth_header = headers["Authorization"]
             valid, payload = validate_auth_header(auth_header)
+            del headers["Authorization"]  # remove Authorization from headers
             print("Found 'Authorization' in headers. Results: ", valid, payload)
 
         # If header validation failed, try validating access token
@@ -140,7 +143,8 @@ def check_authorization(func):
             and "access_token" in headers
             and len(headers.get("secret_key", "")) > 10
         ):
-            valid, payload = validate_access_token(headers)
+            valid, payload = validate_credentials(headers)
+            del headers["secret_key"]  # remove secret_key from headers
             print("Found access key pair in headers. Results: ", valid, payload)
 
         # If still invalid, return 401

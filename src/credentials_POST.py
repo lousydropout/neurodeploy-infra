@@ -16,6 +16,7 @@ _TOKENS_TABLE = dynamodb.Table(_TOKENS_TABLE_NAME)
 
 def add_token_to_tokens_table(
     username: str,
+    credential_name: str,
     access_token: str,
     secret_key: str,
     description: str,
@@ -25,7 +26,8 @@ def add_token_to_tokens_table(
         # username
         record = {
             "pk": f"username|{username}",
-            "sk": access_token,
+            "sk": credential_name,
+            "access_token": access_token,
             "description": description,
         }
         _TOKENS_TABLE.put_item(
@@ -37,6 +39,7 @@ def add_token_to_tokens_table(
             "pk": f"access_token|{access_token}",
             "sk": "access_token",
             "username": username,
+            "credential_name": credential_name,
             "secret_key_hash": sha256((secret_key + salt).encode(UTF_8)).hexdigest(),
             "salt": salt,
             "description": description,
@@ -46,15 +49,19 @@ def add_token_to_tokens_table(
             ConditionExpression="attribute_not_exists(pk) AND attribute_not_exists(sk)",
         )
     except dynamodb_client.exceptions.ConditionalCheckFailedException:
-        raise Exception(f"""The access key for "{access_token}" already exists.""")
+        raise Exception(
+            f"""The credential_name for "{credential_name}" already exists."""
+        )
 
 
-def is_valid(access_token: str) -> bool:
-    # validate model_name
-    remaining = set(access_token).difference(
+def is_invalid(credential_name: str) -> str:
+    # validate credental_name
+    remaining = set(credential_name).difference(
         set(string.ascii_letters + string.digits + "-_")
     )
-    return not remaining
+    if remaining:
+        return "Invalid credental_name: Only alphanumeric characters [A-Za-z0-9], hyphens ('-'), and underscores ('_') are allowed."
+    return None
 
 
 def get_error_response(err: Exception) -> dict:
@@ -70,8 +77,28 @@ def get_error_response(err: Exception) -> dict:
 def handler(event: dict, context):
     print("Event: ", json.dumps(event))
     username = event["username"]
-    body = json.loads(event["body"])
-    params = event["query_params"] or body
+    headers = event["headers"]
+    params = event["query_params"] or headers
+    try:
+        credential_name = params["credential_name"]
+    except Exception:
+        return {
+            "isBase64Encoded": False,
+            "statusCode": 400,
+            "body": json.dumps(
+                {
+                    "errorMessage": "Missing param: 'credential_name' must be included in the headers."
+                }
+            ),
+        }
+    error = is_invalid(credential_name)
+    if error:
+        return {
+            "isBase64Encoded": False,
+            "statusCode": 400,
+            "body": json.dumps({"errorMessage": error}),
+        }
+
     try:
         description = params["description"]
     except Exception:
@@ -80,7 +107,7 @@ def handler(event: dict, context):
             "statusCode": 400,
             "body": json.dumps(
                 {
-                    "errorMessage": "Missing param: 'description' must be included in the body json."
+                    "errorMessage": "Missing param: 'description' must be included in the headers."
                 }
             ),
         }
@@ -90,6 +117,7 @@ def handler(event: dict, context):
     try:
         response = add_token_to_tokens_table(
             username=username,
+            credential_name=credential_name,
             access_token=access_token,
             secret_key=secret_key,
             description=description,

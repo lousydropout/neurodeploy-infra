@@ -21,12 +21,14 @@ sqs = boto3.client("sqs")
 
 def parse(event: dict) -> dict:
     """Return a parsed version of the API Gateway event (with password salted and hashed)."""
-    # get body
-    body: dict[str, str] = json.loads(event["body"])
+    # get header
+    headers: dict[str, str] = event.get("headers") or {}
 
-    password = body["password"]
+    # remove password from headers since headers will be logged
+    password = headers.pop("password")
+    # validate password & create hash
     if len(password) < 8:
-        raise Exception("Password not long enough")
+        raise Exception("Password not long enough (min: 8 characters long)")
     salt = str(uuid())
     hashed_password: str = sha256((password + salt).encode(UTF_8)).hexdigest()
 
@@ -38,15 +40,15 @@ def parse(event: dict) -> dict:
         "http_method": event["httpMethod"],
         "path": event["path"],
         "query_params": event["queryStringParameters"],
-        "headers": event["headers"],
+        "headers": headers,
         "protocol": request_context["protocol"],
         "domain_name": request_context["domainName"],
         "request_epoch_time": request_context["requestTimeEpoch"],
         "api_id": request_context["apiId"],
         "stage": request_context["stage"],
         "ip_source": identity["sourceIp"],
-        "username": body["username"],
-        "email": body["email"],
+        "username": headers["username"],
+        "email": headers["email"],
         "salt": salt,
         "hashed_password": hashed_password,
         "identity": identity,
@@ -64,14 +66,18 @@ def add_user_to_users_table(username: str, payload: dict):
         raise Exception(f"""The username "{username}" already exists.""")
 
 
-def add_token_to_tokens_table(username: str, access_token: str, secret_key: str):
+def add_token_to_tokens_table(
+    username: str, credential_name: str, access_token: str, secret_key: str
+):
     try:
         salt = uuid().hex
         # username
         record = {
             "pk": f"username|{username}",
-            "sk": access_token,
+            "sk": credential_name,
+            "access_token": access_token,
             "description": "default access key + access secret pair",
+            "exp": None,
         }
         _TOKENS_TABLE.put_item(
             Item=record,
@@ -81,6 +87,7 @@ def add_token_to_tokens_table(username: str, access_token: str, secret_key: str)
         record = {
             "pk": f"access_token|{access_token}",
             "sk": "access_token",
+            "credential_name": credential_name,
             "username": username,
             "secret_key_hash": sha256((secret_key + salt).encode(UTF_8)).hexdigest(),
             "salt": salt,
@@ -148,7 +155,12 @@ def handler(event: dict, context) -> dict:
     access_token = uuid().hex
     secret_key = sha256(uuid().hex.encode(UTF_8)).hexdigest()
     try:
-        add_token_to_tokens_table(username, access_token, secret_key)
+        add_token_to_tokens_table(
+            username=username,
+            credential_name="default",
+            access_token=access_token,
+            secret_key=secret_key,
+        )
     except Exception as err:
         print("failed")
         print(err)
@@ -174,8 +186,10 @@ def handler(event: dict, context) -> dict:
         "headers": {"content-type": "application/json"},
         "body": json.dumps(
             {
+                "name": "default",
                 "access_token": access_token,
                 "secret_key": secret_key,
+                "exp": None,
             }
         ),
     }

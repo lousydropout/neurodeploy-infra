@@ -10,7 +10,7 @@ _TOKENS_TABLE_NAME = "neurodeploy_Tokens"
 
 
 def get_tokens(username: str) -> list[dict]:
-    statement = f"SELECT sk, description FROM {_TOKENS_TABLE_NAME} WHERE pk='username|{username}';"
+    statement = f"SELECT sk, access_token, description, exp FROM {_TOKENS_TABLE_NAME} WHERE pk='username|{username}';"
     response = dynamodb_client.execute_statement(Statement=statement)
     return [ddb.from_(x) for x in response.get("Items", [])]
 
@@ -20,7 +20,10 @@ def handler(event: dict, context):
     print("Event: ", json.dumps(event))
     username = event["username"]
     response = get_tokens(username)
-    tokens = [{"access_token": item.pop("sk"), **item} for item in response]
+    tokens = [
+        {"crendential_name": item.pop("sk"), "expiration": item.pop("exp"), **item}
+        for item in response
+    ]
 
     print("Tokens: ", json.dumps(tokens))
     return {
