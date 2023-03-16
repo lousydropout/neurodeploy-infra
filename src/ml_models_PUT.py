@@ -13,13 +13,12 @@ MODELS_S3_BUCKET = f"neurodeploy-models-{_REGION_NAME}"
 apigw = boto3.client("apigateway")
 s3 = boto3.client("s3")
 dynamodb = boto3.client("dynamodb")
-_APIS_TABLE_NAME = "neurodeploy_Apis"
 
 
-def get_api_id(username: str) -> str:
-    key = ddb.to_({"pk": username, "sk": "resources"})
-    response = dynamodb.get_item(TableName=_APIS_TABLE_NAME, Key=key)
-    return ddb.from_(response.get("Item", {"api_id": None}))["api_id"]
+# def get_api_id(username: str) -> str:
+#     key = ddb.to_({"pk": username, "sk": "resources"})
+#     response = dynamodb.get_item(TableName=_APIS_TABLE_NAME, Key=key)
+#     return ddb.from_(response.get("Item", {"api_id": None}))["api_id"]
 
 
 def create_presigned_post(

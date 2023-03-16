@@ -11,8 +11,6 @@ LOGS_S3_BUCKET = f"neurodeploy-logs-{_REGION_NAME}"
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
-_APIS_TABLE_NAME = "neurodeploy_Apis"
-_MODELS_TABLE_NAME = "neurodeploy_Models"
 
 # other boto3 clients
 apigw = boto3.client("apigateway")
