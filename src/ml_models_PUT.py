@@ -143,10 +143,12 @@ def handler(event: dict, context) -> dict:
         object_name=key,
         fields={
             "x-amz-meta-model-type": model_type,
+            "x-amz-meta-persistence-type": persistence_type,
             "Content-Type": f"model/{persistence_type}",
         },
         conditions=[
             {"x-amz-meta-model-type": model_type},
+            {"x-amz-meta-persistence-type": persistence_type},
             {"Content-Type": f"model/{persistence_type}"},
         ],
     )
