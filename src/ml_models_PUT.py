@@ -46,12 +46,14 @@ def create_presigned_post(
     return response
 
 
-MODEL_TYPES = {
-    "tensorflow",
-}
-PERSISTENCE_TYPES = {"h5"}
+MODEL_TYPES = {"tensorflow", "scikit-learn"}
+PERSISTENCE_TYPES = {"h5", "joblib", "pickle"}
 
-MODEL_PERSISTENCE_TYPES = {("tensorflow", "h5")}
+MODEL_PERSISTENCE_TYPES = {
+    ("tensorflow", "h5"),
+    ("scikit-learn", "joblib"),
+    ("scikit-learn", "pickle"),
+}
 
 
 def validate_params(
