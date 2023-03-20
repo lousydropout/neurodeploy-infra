@@ -2,6 +2,7 @@ import os
 import json
 from hashlib import sha256
 from uuid import uuid4 as uuid
+from helpers import validation
 
 import boto3
 
@@ -170,6 +171,11 @@ def handler(event: dict, context) -> dict:
         return response
     print("done")
 
+    # 4. Create jwt
+    print("create jwt token", end=". . . ")
+    token, exp = validation.create_api_token(username=username)
+    print("done")
+
     # 4. Send event to queue to create api for new user
     # payload = {"domain_name": _DOMAIN_NAME, "username": username}
     # response = sqs.send_message(
@@ -185,6 +191,7 @@ def handler(event: dict, context) -> dict:
         "isBase64Encoded": False,
         "statusCode": 201,
         "headers": {
+            "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
             "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
             "Access-Control-Allow-Methods": "POST",  # Allow only GET request
@@ -196,6 +203,7 @@ def handler(event: dict, context) -> dict:
                 "access_token": access_token,
                 "secret_key": secret_key,
                 "expiration": None,
+                "jwt": {"token": token, "expiration": exp.isoformat()},
             }
         ),
     }

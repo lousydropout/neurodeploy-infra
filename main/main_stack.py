@@ -227,6 +227,8 @@ class MainStack(Stack):
             "sign-up",
             filename_overwrite="signup_POST",
             tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
             create_queue=True,
         )
         POST_signup.lambda_function.add_environment("domain_name", self.domain_name)
