@@ -35,7 +35,7 @@ def handler(event: dict, context):
         "headers": {
             "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
             "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "POST",  # Allow only GET request
+            "Access-Control-Allow-Methods": "GET",  # Allow only GET request
             "Access-Control-Allow-Headers": "Content-Type",
         },
         "body": json.dumps(
