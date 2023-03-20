@@ -24,7 +24,11 @@ def get_model_info(item: dict) -> dict:
 
 def get_models(username: str) -> list[dict]:
     response = s3.list_object_versions(Bucket=MODELS_S3_BUCKET, Prefix=username)
-    return [get_model_info(item) for item in response["Versions"] if item["IsLatest"]]
+    return [
+        get_model_info(item)
+        for item in response.get("Versions", [])
+        if item.get("IsLatest", False)
+    ]
 
 
 @validation.check_authorization
@@ -33,6 +37,7 @@ def handler(event: dict, context):
         "isBase64Encoded": False,
         "statusCode": 200,
         "headers": {
+            "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
             "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
             "Access-Control-Allow-Methods": "GET",  # Allow only GET request

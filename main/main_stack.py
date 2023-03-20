@@ -258,6 +258,12 @@ class MainStack(Stack):
 
         # credentials
         # Note: need read-write permission for GET due to use of PartiQL
+        OPTIONS_credentials = self.add(
+            api,
+            "OPTIONS",
+            "credentials",
+            filename_overwrite="credentials_OPTIONS",
+        )
         GET_access_tokens = self.add(
             api,
             "GET",
@@ -290,6 +296,12 @@ class MainStack(Stack):
         )
 
         # ml-models
+        OPTIONS_ml_models = self.add(
+            api,
+            "OPTIONS",
+            "ml-models",
+            filename_overwrite="ml_models_OPTIONS",
+        )
         DELETE_ml_models = self.add(
             api,
             "DELETE",
