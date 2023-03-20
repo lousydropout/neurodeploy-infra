@@ -242,6 +242,13 @@ class MainStack(Stack):
         POST_signup.lambda_function.role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
         )
+        OPTIONS_signup = self.add(
+            api,
+            "OPTIONS",
+            "sign-up",
+            filename_overwrite="signup_OPTIONS",
+        )
+
         POST_signin = self.add(
             api,
             "POST",
