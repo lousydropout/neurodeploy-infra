@@ -92,7 +92,7 @@ class MainStack(Stack):
         queue: sqs.Queue = None,
     ) -> lambda_.Function:
         # environment variables for the lambda function
-        env = {table.table_name: table.table_arn for (table, _) in tables}
+        env = {table.table_name: table.table_arn for (table, _) in tables or []}
         env["region_name"] = self.region_name
         if queue:
             env["queue"] = queue.queue_url
@@ -248,6 +248,12 @@ class MainStack(Stack):
             tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
+        )
+        OPTIONS_signin = self.add(
+            api,
+            "OPTIONS",
+            "sign-in",
+            filename_overwrite="signin_OPTIONS",
         )
 
         # credentials

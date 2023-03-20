@@ -13,7 +13,7 @@ _REGION_1 = "us-west-1"
 _REGION_2 = "us-east-2"
 _REGIONS = [_REGION_1, _REGION_2]
 
-_BASE_IMAGE = "sha256:b89d2da8ccf8653053bdbcf495c3bec7a53305a646594b10212854b8e3014531"
+_BASE_IMAGE = "sha256:f4d237e0d81116e56b1ceec8aa944c681b10a27ad754ae30ea7559422691ca1a"
 
 app = cdk.App()
 

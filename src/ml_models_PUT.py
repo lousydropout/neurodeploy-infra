@@ -159,7 +159,12 @@ def handler(event: dict, context) -> dict:
     return {
         "isBase64Encoded": False,
         "statusCode": 201,
-        # "headers": {"headerName": "headerValue"},
+        "headers": {
+            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
+            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
+            "Access-Control-Allow-Methods": "PUT",  # Allow only GET request
+            "Access-Control-Allow-Headers": "Content-Type",
+        },
         "body": json.dumps(
             {
                 "message": f"Please upload your {model_type} {persistence_type} model to complete the process.",
