@@ -20,9 +20,9 @@ def handler(event: dict, context):
     print("Event: ", json.dumps(event))
     username = event["username"]
     response = get_tokens(username)
-    tokens = [{"crendential_name": item.pop("sk"), **item} for item in response]
+    creds = [{"name": item.pop("sk"), **item} for item in response]
 
-    print("Tokens: ", json.dumps(tokens))
+    print("creds: ", json.dumps(creds))
     return {
         "isBase64Encoded": False,
         "statusCode": 200,
@@ -33,5 +33,5 @@ def handler(event: dict, context):
             "Access-Control-Allow-Methods": "GET",  # Allow only GET request
             "Access-Control-Allow-Headers": "Content-Type",
         },
-        "body": json.dumps({"tokens": tokens}),
+        "body": json.dumps({"creds": creds}),
     }
