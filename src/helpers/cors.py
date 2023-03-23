@@ -4,6 +4,7 @@ import json
 def get_response(
     body: dict = None,
     status_code: int = 200,
+    headers: str = "*",
     methods: str = "*",
     origin: str = "*",
 ) -> dict:
@@ -17,7 +18,7 @@ def get_response(
             "Access-Control-Allow-Origin": origin,  # Required for CORS support to work
             "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
             "Access-Control-Allow-Methods": methods,  # Allow only GET request
-            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Headers": headers,
         },
     }
 

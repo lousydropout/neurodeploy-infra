@@ -86,6 +86,9 @@ def handler(event: dict, context):
         print("Response: ", json.dumps(response))
         return response
 
+    if not user:
+        return get_error_response("Incorrect username/password combination")
+
     # 3. Check if the password is correct
     if is_password_correct(
         password=headers["password"],
@@ -94,7 +97,7 @@ def handler(event: dict, context):
     ):
         print(f"Password is correct: True")
     else:
-        response = get_error_response("Incorrect password")
+        response = get_error_response("Incorrect username/password combination")
         print("Response: ", json.dumps(response))
         return response
 
