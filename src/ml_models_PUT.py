@@ -1,8 +1,7 @@
 import os
 import string
 import json
-from helpers import dynamodb as ddb
-from helpers import validation
+from helpers import cors, validation
 import boto3
 from botocore.exceptions import ClientError
 
@@ -132,11 +131,7 @@ def handler(event: dict, context) -> dict:
 
     # return error message if errors
     if errors:
-        return {
-            "isBase64Encoded": False,
-            "statusCode": 400,
-            "body": json.dumps({"errors": errors}),
-        }
+        return cors.get_response(status_code=400, body={"errors": errors})
 
     # Create presigned post
     key = f"{username}/{model_name}"
@@ -156,21 +151,11 @@ def handler(event: dict, context) -> dict:
     )
     print("Response: ", json.dumps(response))
 
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 201,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "PUT",  # Allow only GET request
-            "Access-Control-Allow-Headers": "Content-Type",
+    return cors.get_response(
+        status_code=201,
+        body={
+            "message": f"Please upload your {model_type} {persistence_type} model to complete the process.",
+            **response,
         },
-        "body": json.dumps(
-            {
-                "message": f"Please upload your {model_type} {persistence_type} model to complete the process.",
-                **response,
-            },
-            default=str,
-        ),
-    }
+        methods="PUT",
+    )

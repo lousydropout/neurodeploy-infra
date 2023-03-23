@@ -2,7 +2,7 @@ import os
 import json
 from hashlib import sha256
 from uuid import uuid4 as uuid
-from helpers import validation
+from helpers import cors, validation
 
 import boto3
 
@@ -117,12 +117,11 @@ def get_number_of_users() -> int:
 
 
 def get_error_response(err: Exception) -> dict:
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 400,
-        "headers": {"content-type": "application/json"},
-        "body": json.dumps({"error": str(err)}),
-    }
+    return cors.get_response(
+        status_code=400,
+        body={"error_message": str(err)},
+        methods="POST",
+    )
 
 
 def handler(event: dict, context) -> dict:
@@ -176,36 +175,17 @@ def handler(event: dict, context) -> dict:
     token, exp = validation.create_api_token(username=username)
     print("done")
 
-    # 4. Send event to queue to create api for new user
-    # payload = {"domain_name": _DOMAIN_NAME, "username": username}
-    # response = sqs.send_message(
-    #     QueueUrl=_QUEUE,
-    #     MessageGroupId=username,
-    #     MessageDeduplicationId=str(uuid()),
-    #     MessageBody=json.dumps(payload),
-    # )
-    # print("Sqs send messsage response: ", json.dumps(response, default=str))
-
     # 5. Return response
-    response = {
-        "isBase64Encoded": False,
-        "statusCode": 201,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "POST",  # Allow only POST request
-            "Access-Control-Allow-Headers": "*",
+    response = cors.get_response(
+        status_code=201,
+        body={
+            "name": "default",
+            "access_token": access_token,
+            "secret_key": secret_key,
+            "expiration": None,
+            "jwt": {"token": token, "expiration": exp.isoformat()},
         },
-        "body": json.dumps(
-            {
-                "name": "default",
-                "access_token": access_token,
-                "secret_key": secret_key,
-                "expiration": None,
-                "jwt": {"token": token, "expiration": exp.isoformat()},
-            }
-        ),
-    }
+        methods="POST",
+    )
     print("Response: ", json.dumps(response))
     return response

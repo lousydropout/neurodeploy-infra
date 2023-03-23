@@ -1,4 +1,5 @@
 import json
+from helpers import cors
 from helpers import dynamodb as ddb
 from helpers import validation
 import boto3
@@ -23,15 +24,8 @@ def handler(event: dict, context):
     creds = [{"name": item.pop("sk"), **item} for item in response]
 
     print("creds: ", json.dumps(creds))
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "GET",  # Allow only GET request
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
-        "body": json.dumps({"creds": creds}),
-    }
+    return cors.get_response(
+        body={"creds": creds},
+        status_code=200,
+        methods="GET",
+    )

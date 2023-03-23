@@ -1,12 +1,5 @@
+from helpers import cors
+
+
 def handler(event: dict, context) -> dict:
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 204,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "POST",  # Allow only POST request
-            "Access-Control-Allow-Headers": "*",
-        },
-    }
+    return cors.get_response(status_code=204, methods="POST")

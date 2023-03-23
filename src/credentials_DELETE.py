@@ -1,4 +1,5 @@
 import json
+from helpers import cors
 from helpers import dynamodb as ddb
 from helpers import validation
 import boto3
@@ -30,22 +31,21 @@ def delete_credential(username: str, credential_name) -> list[dict]:
 def handler(event: dict, context):
     username = event["username"]
     credential_name = event["path_params"]["proxy"]
-    response = delete_credential(username, credential_name)
+
+    try:
+        response = delete_credential(username, credential_name)
+    except:
+        return cors.get_response(
+            status_code=200,
+            body={
+                "error_message": f"Unable to delete credentials '{credential_name}'. Please confirm credential's name."
+            },
+        )
 
     print("response: ", json.dumps(response, default=str))
 
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "DELETE",  # Allow only GET request
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
-        "body": json.dumps(
-            {"message": f"Deleted user {username}'s credential '{credential_name}'."},
-            default=str,
-        ),
-    }
+    return cors.get_response(
+        status_code=200,
+        body={"message": f"Deleted user {username}'s credential '{credential_name}'."},
+        methods="DELETE",
+    )

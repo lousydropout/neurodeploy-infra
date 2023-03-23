@@ -3,8 +3,7 @@ from typing import Tuple
 import json
 from hashlib import sha256
 import boto3
-from helpers import validation
-from helpers import dynamodb as ddb
+from helpers import cors, dynamodb as ddb, validation
 from helpers.decimalEncoder import DecimalEncoder
 
 
@@ -59,18 +58,11 @@ def get_user(username: str) -> str:
 
 
 def get_error_response(err: Exception) -> dict:
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 400,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "POST",  # Allow only POST request
-            "Access-Control-Allow-Headers": "*",
-        },
-        "body": json.dumps({"errorMessage": str(err)}),
-    }
+    return cors.get_response(
+        status_code=400,
+        body={"error_message": str(err)},
+        methods="POST",
+    )
 
 
 def handler(event: dict, context):
@@ -112,15 +104,8 @@ def handler(event: dict, context):
     print("done")
 
     # 5. Return jwt
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "POST",  # Allow only POST request
-            "Access-Control-Allow-Headers": "*",
-        },
-        "body": json.dumps({"token": token, "expiration": exp.isoformat()}),
-    }
+    return cors.get_response(
+        status_code=200,
+        body={"token": token, "expiration": exp.isoformat()},
+        methods="POST",
+    )

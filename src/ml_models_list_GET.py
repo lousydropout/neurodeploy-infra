@@ -1,7 +1,6 @@
 import os
-import json
 from datetime import datetime
-from helpers import validation
+from helpers import cors, validation
 import boto3
 
 _REGION_NAME = os.environ["region_name"]
@@ -33,18 +32,9 @@ def get_models(username: str) -> list[dict]:
 
 @validation.check_authorization
 def handler(event: dict, context):
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "GET",  # Allow only GET request
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
-        "body": json.dumps(
-            {"models": get_models(event["username"])},
-            default=str,
-        ),
-    }
+    try:
+        results = get_models(event["username"])
+    except:
+        results = []
+
+    return cors.get_response(status_code=200, body={"models": results}, methods="GET")

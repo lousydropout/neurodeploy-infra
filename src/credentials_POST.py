@@ -2,6 +2,7 @@ import json
 import string
 from hashlib import sha256
 from uuid import uuid4 as uuid
+from helpers import cors
 from helpers import validation
 import boto3
 
@@ -67,15 +68,6 @@ def is_invalid(credential_name: str) -> str:
     return None
 
 
-def get_error_response(err: Exception) -> dict:
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 400,
-        "headers": {"content-type": "application/json"},
-        "body": json.dumps({"error": str(err)}),
-    }
-
-
 @validation.check_authorization
 def handler(event: dict, context):
     print("Event: ", json.dumps(event))
@@ -85,35 +77,30 @@ def handler(event: dict, context):
     try:
         credential_name = params["credential_name"]
     except Exception:
-        return {
-            "isBase64Encoded": False,
-            "statusCode": 400,
-            "body": json.dumps(
-                {
-                    "errorMessage": "Missing param: 'credential_name' must be included in the headers."
-                }
-            ),
-        }
+        return cors.get_response(
+            status_code=400,
+            body={
+                "error_message": "Missing param: 'credential_name' must be included in the headers."
+            },
+            methods="POST",
+        )
     error = is_invalid(credential_name)
     if error:
-        return {
-            "isBase64Encoded": False,
-            "statusCode": 400,
-            "body": json.dumps({"errorMessage": error}),
-        }
+        return cors.get_response(
+            status_code=400,
+            body={"errorMessage": error},
+            methods="POST",
+        )
 
     try:
         description = params["description"]
     except Exception:
-        return {
-            "isBase64Encoded": False,
-            "statusCode": 400,
-            "body": json.dumps(
-                {
-                    "errorMessage": "Missing param: 'description' must be included in the headers."
-                }
-            ),
-        }
+        return cors.get_response(
+            status_code=400,
+            body={
+                "error_message": "Missing param: 'description' must be included in the headers."
+            },
+        )
 
     access_token = uuid().hex
     secret_key = sha256(uuid().hex.encode(UTF_8)).hexdigest()
@@ -130,28 +117,21 @@ def handler(event: dict, context):
     except Exception as err:
         print("failed")
         print(err)
-        response = get_error_response(err)
+        response = cors.get_response(
+            status_code=400, body={"error_message": err}, methods="POST"
+        )
         print("Response: ", json.dumps(response))
         return response
 
     print("Response: ", json.dumps(response))
-    return {
-        "isBase64Encoded": False,
-        "statusCode": 201,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "POST",  # Allow only GET request
-            "Access-Control-Allow-Headers": "Content-Type",
+    return cors.get_response(
+        status_code=201,
+        methods="POST",
+        body={
+            "access_token": access_token,
+            "secret_key": secret_key,
+            "credential_name": credential_name,
+            "expiration": None,
+            "description": description,
         },
-        "body": json.dumps(
-            {
-                "access_token": access_token,
-                "secret_key": secret_key,
-                "credential_name": credential_name,
-                "expiration": None,
-                "description": description,
-            }
-        ),
-    }
+    )
