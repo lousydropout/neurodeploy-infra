@@ -8,7 +8,7 @@ def get_response(
     methods: str = "*",
     origin: str = "*",
 ) -> dict:
-    result = {"body": json.dumps(body, default=str)} if body else {}
+    result = {"body": json.dumps(body, default=str)} if body else {"body": ""}
     result = {
         **result,
         "isBase64Encoded": False,

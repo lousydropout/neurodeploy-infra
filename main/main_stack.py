@@ -311,6 +311,13 @@ class MainStack(Stack):
             "ml-models",
             filename_overwrite="ml_models_OPTIONS",
         )
+        OPTIONS_ml_models_proxy = self.add(
+            api,
+            "OPTIONS",
+            "ml-models",
+            filename_overwrite="ml_models_proxy_OPTIONS",
+            proxy=True,
+        )
         DELETE_ml_models = self.add(
             api,
             "DELETE",

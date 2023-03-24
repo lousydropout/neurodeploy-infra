@@ -131,7 +131,9 @@ def handler(event: dict, context) -> dict:
 
     # return error message if errors
     if errors:
-        return cors.get_response(status_code=400, body={"errors": errors})
+        return cors.get_response(
+            status_code=400, body={"errors": errors}, methods="PUT"
+        )
 
     # Create presigned post
     key = f"{username}/{model_name}"
