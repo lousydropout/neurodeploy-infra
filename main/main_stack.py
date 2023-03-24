@@ -273,6 +273,13 @@ class MainStack(Stack):
             "credentials",
             filename_overwrite="credentials_OPTIONS",
         )
+        OPTIONS_proxy_credentials = self.add(
+            api,
+            "OPTIONS",
+            "credentials",
+            filename_overwrite="credentials_proxy_OPTIONS",
+            proxy=True,
+        )
         GET_access_tokens = self.add(
             api,
             "GET",
