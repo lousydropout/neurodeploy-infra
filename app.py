@@ -5,6 +5,13 @@ from main.main_stack import MainStack
 from base.base_stack import BaseStack
 from base.regional_base_stack import RegionalBaseStack
 
+import boto3
+
+ecr = boto3.client("ecr")
+x = ecr.list_images(repositoryName="lambda_runtime")
+_BASE_IMAGE = next(
+    image["imageDigest"] for image in x["imageIds"] if image["imageTag"] == "latest"
+)
 
 DOMAIN_NAME = "playingwithml.com"
 _PREFIX = "neurodeploy"
@@ -12,8 +19,6 @@ _ACCOUNT = os.getenv("CDK_DEFAULT_ACCOUNT")
 _REGION_1 = "us-west-1"
 _REGION_2 = "us-east-2"
 _REGIONS = [_REGION_1, _REGION_2]
-
-_BASE_IMAGE = "sha256:f4d237e0d81116e56b1ceec8aa944c681b10a27ad754ae30ea7559422691ca1a"
 
 app = cdk.App()
 
