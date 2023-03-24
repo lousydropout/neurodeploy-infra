@@ -8,9 +8,10 @@ from base.regional_base_stack import RegionalBaseStack
 import boto3
 
 ecr = boto3.client("ecr")
-x = ecr.list_images(repositoryName="lambda_runtime")
 _BASE_IMAGE = next(
-    image["imageDigest"] for image in x["imageIds"] if image["imageTag"] == "latest"
+    image["imageDigest"]
+    for image in ecr.list_images(repositoryName="lambda_runtime")["imageIds"]
+    if image["imageTag"] == "latest"
 )
 
 DOMAIN_NAME = "playingwithml.com"
