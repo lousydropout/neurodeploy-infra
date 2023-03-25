@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from aws_cdk import (
     aws_dynamodb as dynamodb,
     aws_secretsmanager as sm,
@@ -6,7 +5,6 @@ from aws_cdk import (
     Stack,
 )
 from typing import List
-import aws_cdk as cdk
 from constructs import Construct
 
 
@@ -27,7 +25,7 @@ class BaseStack(Stack):
 
         # # DynamoDB tables
         users = self.create_table("users_table", name="Users")
-        tokens = self.create_table("tokens_table", name="Tokens")
+        creds = self.create_table("creds_table", name="Creds")
         models = self.create_table("models_table", name="Models")
         usages = self.create_table("usages_table", name="Usages")
 

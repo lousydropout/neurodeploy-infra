@@ -11,14 +11,14 @@ UTF_8 = "utf-8"
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
-_TOKENS_TABLE_NAME = "neurodeploy_Tokens"
-_TOKENS_TABLE = dynamodb.Table(_TOKENS_TABLE_NAME)
+_CREDS_TABLE_NAME = "neurodeploy_Creds"
+_CREDS_TABLE = dynamodb.Table(_CREDS_TABLE_NAME)
 
 
-def add_token_to_tokens_table(
+def add_creds_to_table(
     username: str,
-    credential_name: str,
-    access_token: str,
+    credentials_name: str,
+    access_key: str,
     secret_key: str,
     description: str,
     expiration: str,
@@ -28,33 +28,33 @@ def add_token_to_tokens_table(
         # username
         record = {
             "pk": f"username|{username}",
-            "sk": credential_name,
-            "access_token": access_token,
+            "sk": credentials_name,
+            "access_key": access_key,
             "description": description,
             "expiration": expiration,
         }
-        _TOKENS_TABLE.put_item(
+        _CREDS_TABLE.put_item(
             Item=record,
             ConditionExpression="attribute_not_exists(pk) AND attribute_not_exists(sk)",
         )
         # access-token
         record = {
-            "pk": f"access_token|{access_token}",
-            "sk": "access_token",
+            "pk": f"creds|{access_key}",
+            "sk": "creds",
             "username": username,
-            "credential_name": credential_name,
+            "credentials_name": credentials_name,
             "expiration": expiration,
             "secret_key_hash": sha256((secret_key + salt).encode(UTF_8)).hexdigest(),
             "salt": salt,
             "description": description,
         }
-        _TOKENS_TABLE.put_item(
+        _CREDS_TABLE.put_item(
             Item=record,
             ConditionExpression="attribute_not_exists(pk) AND attribute_not_exists(sk)",
         )
     except dynamodb_client.exceptions.ConditionalCheckFailedException:
         raise Exception(
-            f"""The credential_name for "{credential_name}" already exists."""
+            f"""The credentials_name for "{credentials_name}" already exists."""
         )
 
 
@@ -102,14 +102,14 @@ def handler(event: dict, context):
             },
         )
 
-    access_token = uuid().hex
+    access_key = uuid().hex
     secret_key = sha256(uuid().hex.encode(UTF_8)).hexdigest()
     expiration = None
     try:
-        response = add_token_to_tokens_table(
+        response = add_creds_to_table(
             username=username,
             credential_name=credential_name,
-            access_token=access_token,
+            access_key=access_key,
             secret_key=secret_key,
             description=description,
             expiration=expiration,
@@ -128,7 +128,7 @@ def handler(event: dict, context):
         status_code=201,
         methods="POST",
         body={
-            "access_token": access_token,
+            "access_key": access_key,
             "secret_key": secret_key,
             "credential_name": credential_name,
             "expiration": None,

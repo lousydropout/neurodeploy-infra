@@ -15,5 +15,13 @@
     "us-east-2a",
     "us-east-2b",
     "us-east-2c"
-  ]
+  ],
+  "hosted-zone:account=410585721938:domainName=neurodeploy.com:region=us-west-1": {
+    "Id": "/hostedzone/Z01789541B60A8PPE48EC",
+    "Name": "neurodeploy.com."
+  },
+  "hosted-zone:account=410585721938:domainName=neurodeploy.com:region=us-east-2": {
+    "Id": "/hostedzone/Z01789541B60A8PPE48EC",
+    "Name": "neurodeploy.com."
+  }
 }

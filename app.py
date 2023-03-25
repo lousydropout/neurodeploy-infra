@@ -8,18 +8,18 @@ from base.regional_base_stack import RegionalBaseStack
 import boto3
 
 ecr = boto3.client("ecr")
-_BASE_IMAGE = next(
-    image["imageDigest"]
-    for image in ecr.list_images(repositoryName="lambda_runtime")["imageIds"]
-    if image["imageTag"] == "latest"
-)
 
-DOMAIN_NAME = "playingwithml.com"
+DOMAIN_NAME = "neurodeploy.com"
 _PREFIX = "neurodeploy"
 _ACCOUNT = os.getenv("CDK_DEFAULT_ACCOUNT")
 _REGION_1 = "us-west-1"
 _REGION_2 = "us-east-2"
 _REGIONS = [_REGION_1, _REGION_2]
+_BASE_IMAGE = next(
+    image["imageDigest"]
+    for image in ecr.list_images(repositoryName="lambda_runtime")["imageIds"]
+    if image["imageTag"] == "latest"
+)
 
 app = cdk.App()
 

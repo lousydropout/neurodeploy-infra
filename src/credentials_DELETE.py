@@ -7,20 +7,20 @@ import boto3
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
-_TOKENS_TABLE_NAME = "neurodeploy_Tokens"
+_CREDS_TABLE_NAME = "neurodeploy_Creds"
 
 
 def delete_credential(username: str, credential_name) -> list[dict]:
-    # Get access_token using username & credential_name
-    statement = f"SELECT access_token FROM {_TOKENS_TABLE_NAME} WHERE pk='username|{username}' and sk='{credential_name}';"
+    # Get access_key using username & credential_name
+    statement = f"SELECT access_key FROM {_CREDS_TABLE_NAME} WHERE pk='username|{username}' and sk='{credential_name}';"
     response = dynamodb_client.execute_statement(Statement=statement)
     result = [ddb.from_(x) for x in response.get("Items", [])]
-    access_token = result[0]["access_token"]
+    access_key = result[0]["access_key"]
 
     # Delete relevant records from dynamodb
     _statements = [
-        f"DELETE FROM {_TOKENS_TABLE_NAME} WHERE pk='username|{username}' and sk='{credential_name}';",
-        f"DELETE FROM {_TOKENS_TABLE_NAME} WHERE pk='access_token|{access_token}' and sk='access_token';",
+        f"DELETE FROM {_CREDS_TABLE_NAME} WHERE pk='username|{username}' and sk='{credential_name}';",
+        f"DELETE FROM {_CREDS_TABLE_NAME} WHERE pk='creds|{access_key}' and sk='creds';",
     ]
     statements = [{"Statement": statement} for statement in _statements]
     response = dynamodb_client.batch_execute_statement(Statements=statements)

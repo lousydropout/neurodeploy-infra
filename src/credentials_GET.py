@@ -7,11 +7,11 @@ import boto3
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
-_TOKENS_TABLE_NAME = "neurodeploy_Tokens"
+_CREDS_TABLE_NAME = "neurodeploy_Creds"
 
 
-def get_tokens(username: str) -> list[dict]:
-    statement = f"SELECT sk, access_token, description, expiration FROM {_TOKENS_TABLE_NAME} WHERE pk='username|{username}';"
+def get_creds(username: str) -> list[dict]:
+    statement = f"SELECT sk, access_key, description, expiration FROM {_CREDS_TABLE_NAME} WHERE pk='username|{username}';"
     response = dynamodb_client.execute_statement(Statement=statement)
     return [ddb.from_(x) for x in response.get("Items", [])]
 
@@ -20,7 +20,7 @@ def get_tokens(username: str) -> list[dict]:
 def handler(event: dict, context):
     print("Event: ", json.dumps(event))
     username = event["username"]
-    response = get_tokens(username)
+    response = get_creds(username)
     creds = [{"name": item.pop("sk"), **item} for item in response]
 
     print("creds: ", json.dumps(creds))

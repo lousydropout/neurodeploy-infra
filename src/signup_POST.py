@@ -1,4 +1,3 @@
-import os
 import json
 from hashlib import sha256
 from uuid import uuid4 as uuid
@@ -9,14 +8,10 @@ import boto3
 
 UTF_8 = "utf-8"
 _USERS_TABLE_NAME = "neurodeploy_Users"
-_API_TOKENS_TABLE_NAME = "neurodeploy_Tokens"
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
 _USERS_TABLE = dynamodb.Table(_USERS_TABLE_NAME)
-_TOKENS_TABLE = dynamodb.Table(_API_TOKENS_TABLE_NAME)
 
-_DOMAIN_NAME = os.environ["domain_name"]
-_QUEUE = os.environ["queue"]
 sqs = boto3.client("sqs")
 
 
@@ -67,42 +62,6 @@ def add_user_to_users_table(username: str, payload: dict):
         raise Exception(f"""The username "{username}" already exists.""")
 
 
-def add_token_to_tokens_table(
-    username: str, credential_name: str, access_token: str, secret_key: str
-):
-    try:
-        salt = uuid().hex
-        # username
-        record = {
-            "pk": f"username|{username}",
-            "sk": credential_name,
-            "access_token": access_token,
-            "description": "default access key + access secret pair",
-            "expiration": None,
-        }
-        _TOKENS_TABLE.put_item(
-            Item=record,
-            ConditionExpression="attribute_not_exists(pk) AND attribute_not_exists(sk)",
-        )
-        # access-token
-        record = {
-            "pk": f"access_token|{access_token}",
-            "sk": "access_token",
-            "credential_name": credential_name,
-            "username": username,
-            "secret_key_hash": sha256((secret_key + salt).encode(UTF_8)).hexdigest(),
-            "salt": salt,
-            "description": "default access key + access secret pair",
-            "expiration": None,
-        }
-        _TOKENS_TABLE.put_item(
-            Item=record,
-            ConditionExpression="attribute_not_exists(pk) AND attribute_not_exists(sk)",
-        )
-    except dynamodb_client.exceptions.ConditionalCheckFailedException:
-        raise Exception(f"""The access key for "{access_token}" already exists.""")
-
-
 def get_number_of_users() -> int:
     response = dynamodb_client.scan(
         TableName=_USERS_TABLE,
@@ -151,38 +110,16 @@ def handler(event: dict, context) -> dict:
         return response
     print("done")
 
-    # 3. Create auth token & log record
-    print("3. creating default access token and secret key", end=". . . ")
-    access_token = uuid().hex
-    secret_key = sha256(uuid().hex.encode(UTF_8)).hexdigest()
-    try:
-        add_token_to_tokens_table(
-            username=username,
-            credential_name="default",
-            access_token=access_token,
-            secret_key=secret_key,
-        )
-    except Exception as err:
-        print("failed")
-        print(err)
-        response = get_error_response(err)
-        print("Response: ", json.dumps(response))
-        return response
-    print("done")
-
-    # 4. Create jwt
-    print("create jwt token", end=". . . ")
+    # 3. Create jwt
+    print("3. create jwt token", end=". . . ")
     token, exp = validation.create_api_token(username=username)
     print("done")
 
-    # 5. Return response
+    # 4. Return response
     response = cors.get_response(
         status_code=201,
         body={
             "name": "default",
-            "access_token": access_token,
-            "secret_key": secret_key,
-            "expiration": None,
             "jwt": {"token": token, "expiration": exp.isoformat()},
         },
         methods="POST",

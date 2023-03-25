@@ -1,4 +1,3 @@
-import os
 from typing import Tuple
 import json
 from hashlib import sha256
@@ -11,8 +10,6 @@ dynamodb = boto3.client("dynamodb")
 
 UTF_8 = "utf-8"
 _USERS_TABLE_NAME = "neurodeploy_Users"
-_USERS = os.environ[_USERS_TABLE_NAME]
-_TOKENS = os.environ["neurodeploy_Tokens"]
 
 
 def is_password_correct(password: str, salt: str, hashed: str) -> bool:

@@ -16,13 +16,10 @@ _REGION: str = os.environ["region_name"]
 _JWT_SECRET_NAME = os.environ["jwt_secret"]
 _SECRETS: dict[str, str] = secrets.get_secret(_JWT_SECRET_NAME, _REGION)
 _USERS_TABLE_NAME = "neurodeploy_Users"
-_TOKENS_TABLE_NAME = "neurodeploy_Tokens"
+_CREDS_TABLE_NAME = "neurodeploy_Creds"
 UTF_8 = "utf-8"
 
-dynamodb_client = boto3.client("dynamodb")
-dynamodb = boto3.resource("dynamodb")
-_USERS_TABLE = dynamodb.Table(_USERS_TABLE_NAME)
-_TOKENS_TABLE = dynamodb.Table(_TOKENS_TABLE_NAME)
+dynamo = boto3.client("dynamodb")
 
 
 def create_api_token(username: str) -> Tuple[str, datetime]:
@@ -58,11 +55,8 @@ def validate_jwt(encoded_jwt: str) -> Tuple[bool, dict]:
 def validate_credentials(username: str, password: str) -> Tuple[bool, dict]:
     key = ddb.to_({"pk": username, "sk": "username"})
     try:
-        item = dynamodb_client.get_item(
-            TableName=_USERS_TABLE_NAME,
-            Key=key,
-        )
-    except dynamodb_client.exceptions.ResourceNotFoundException:
+        item = dynamo.get_item(TableName=_USERS_TABLE_NAME, Key=key)
+    except dynamo.exceptions.ResourceNotFoundException:
         return False, {}
 
     # convert DynamoDB format to regular JSON format
@@ -77,13 +71,13 @@ def validate_credentials(username: str, password: str) -> Tuple[bool, dict]:
     return True, item
 
 
-def get_token_record(access_token: str) -> Dict[str, str]:
+def get_creds_record(access_key: str) -> Dict[str, str]:
     try:
-        response = dynamodb_client.get_item(
-            TableName=_TOKENS_TABLE_NAME,
-            Key=ddb.to_({"pk": f"access_token|{access_token}", "sk": "access_token"}),
+        response = dynamo.get_item(
+            TableName=_CREDS_TABLE_NAME,
+            Key=ddb.to_({"pk": f"creds|{access_key}", "sk": "creds"}),
         )
-    except dynamodb_client.exceptions.ResourceNotFoundException:
+    except dynamo.exceptions.ResourceNotFoundException:
         return False, {}
 
     items = ddb.from_(response.get("Item", {}))
@@ -94,10 +88,10 @@ def get_token_record(access_token: str) -> Dict[str, str]:
 
 
 def validate_credentials(headers: Dict[str, str]) -> Tuple[bool, dict]:
-    access_token = headers["access_token"]
+    access_key = headers["access_key"]
     secret_key = headers["secret_key"]
 
-    success, record = get_token_record(access_token)
+    success, record = get_creds_record(access_key)
     if not success:
         return False, {}
     salt = record["salt"]
@@ -107,7 +101,7 @@ def validate_credentials(headers: Dict[str, str]) -> Tuple[bool, dict]:
     hashed_password = sha256((secret_key + salt).encode(UTF_8)).hexdigest()
 
     if hashed == hashed_password:
-        return True, {"username": username, "exp": None}
+        return True, {"username": username, "expiration": None}
 
     return False, {}
 
@@ -140,7 +134,7 @@ def check_authorization(func):
         # If header validation failed, try validating access token
         if (
             not valid
-            and "access_token" in headers
+            and "access_key" in headers
             and len(headers.get("secret_key", "")) > 10
         ):
             valid, payload = validate_credentials(headers)

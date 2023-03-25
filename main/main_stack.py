@@ -52,7 +52,7 @@ class MainStack(Stack):
 
     def import_databases(self):
         self.users: dynamodb.Table = self.import_dynamodb_table("Users")
-        self.tokens: dynamodb.Table = self.import_dynamodb_table("Tokens")
+        self.creds: dynamodb.Table = self.import_dynamodb_table("Creds")
         self.models: dynamodb.Table = self.import_dynamodb_table("Models")
         self.usages: dynamodb.Table = self.import_dynamodb_table("Usages")
 
@@ -226,7 +226,7 @@ class MainStack(Stack):
             "POST",
             "sign-up",
             filename_overwrite="signup_POST",
-            tables=[(self.users, _READ_WRITE), (self.tokens, _READ_WRITE)],
+            tables=[(self.users, _READ_WRITE), (self.creds, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
             create_queue=True,
@@ -254,7 +254,7 @@ class MainStack(Stack):
             "POST",
             "sign-in",
             filename_overwrite="signin_POST",
-            tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
+            tables=[(self.users, _READ), (self.creds, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -280,33 +280,33 @@ class MainStack(Stack):
             filename_overwrite="credentials_proxy_OPTIONS",
             proxy=True,
         )
-        GET_access_tokens = self.add(
+        GET_creds = self.add(
             api,
             "GET",
             "credentials",
             filename_overwrite="credentials_GET",
-            tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
+            tables=[(self.users, _READ), (self.creds, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
 
-        POST_access_tokens = self.add(
+        POST_access_creds = self.add(
             api,
             "POST",
             "credentials",
             filename_overwrite="credentials_POST",
-            tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
+            tables=[(self.users, _READ), (self.creds, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
 
-        DELETE_access_tokens = self.add(
+        DELETE_access_creds = self.add(
             api,
             "DELETE",
             "credentials",
             filename_overwrite="credentials_DELETE",
             proxy=True,
-            tables=[(self.users, _READ), (self.tokens, _READ_WRITE)],
+            tables=[(self.users, _READ), (self.creds, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -331,7 +331,7 @@ class MainStack(Stack):
             "ml-models",
             filename_overwrite="ml_models_DELETE",
             proxy=True,
-            tables=[(self.users, _READ), (self.tokens, _READ)],
+            tables=[(self.users, _READ), (self.creds, _READ)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -347,7 +347,7 @@ class MainStack(Stack):
             "ml-models",
             filename_overwrite="ml_models_PUT",
             proxy=True,
-            tables=[(self.users, _READ), (self.tokens, _READ)],
+            tables=[(self.users, _READ), (self.creds, _READ)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -366,7 +366,7 @@ class MainStack(Stack):
             proxy=True,
             tables=[
                 (self.users, _READ),
-                (self.tokens, _READ),
+                (self.creds, _READ),
                 (self.usages, _READ_WRITE),
             ],
             buckets=[(self.models_bucket, _READ)],
@@ -381,7 +381,7 @@ class MainStack(Stack):
             filename_overwrite="ml_models_list_GET",
             tables=[
                 (self.users, _READ),
-                (self.tokens, _READ),
+                (self.creds, _READ),
                 (self.usages, _READ),
             ],
             buckets=[(self.models_bucket, _READ)],
@@ -412,7 +412,7 @@ class MainStack(Stack):
             {
                 "POST_signup": POST_signup,
                 "POST_signin": POST_signin,
-                "GET_access_tokens": GET_access_tokens,
+                "GET_creds": GET_creds,
                 "PUT_ml_models": PUT_ml_models,
                 "DELETE_ml_models": DELETE_ml_models,
                 "GET_ml_models": GET_ml_models,
@@ -656,7 +656,7 @@ class MainStack(Stack):
         self.api, rest = self.create_api_gateway_and_lambdas(self.proxy.lambda_function)
         self.POST_signup = rest["POST_signup"]
         self.POST_signin = rest["POST_signin"]
-        self.GET_access_token = rest["GET_access_tokens"]
+        self.GET_creds = rest["GET_creds"]
         self.PUT_ml_models = rest["PUT_ml_models"]
         self.GET_ml_models = rest["GET_ml_models"]
         self.GET_list_of_ml_models = rest["GET_list_of_ml_models"]
