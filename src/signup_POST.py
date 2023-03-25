@@ -119,7 +119,7 @@ def handler(event: dict, context) -> dict:
     response = cors.get_response(
         status_code=201,
         body={
-            "name": "default",
+            "username": username,
             "jwt": {"token": token, "expiration": exp.isoformat()},
         },
         methods="POST",
