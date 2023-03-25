@@ -21,7 +21,7 @@ def handler(event: dict, context):
     print("Event: ", json.dumps(event))
     username = event["username"]
     response = get_creds(username)
-    creds = [{"name": item.pop("sk"), **item} for item in response]
+    creds = [{"credentials_name": item.pop("sk"), **item} for item in response]
 
     print("creds: ", json.dumps(creds))
     return cors.get_response(

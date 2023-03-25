@@ -75,16 +75,16 @@ def handler(event: dict, context):
     headers = event["headers"]
     params = event["query_params"] or headers
     try:
-        credential_name = params["credential_name"]
+        credentials_name = params["credentials_name"]
     except Exception:
         return cors.get_response(
             status_code=400,
             body={
-                "error_message": "Missing param: 'credential_name' must be included in the headers."
+                "error_message": "Missing param: 'credentials_name' must be included in the headers."
             },
             methods="POST",
         )
-    error = is_invalid(credential_name)
+    error = is_invalid(credentials_name)
     if error:
         return cors.get_response(
             status_code=400,
@@ -108,7 +108,7 @@ def handler(event: dict, context):
     try:
         response = add_creds_to_table(
             username=username,
-            credential_name=credential_name,
+            credentials_name=credentials_name,
             access_key=access_key,
             secret_key=secret_key,
             description=description,
@@ -128,10 +128,10 @@ def handler(event: dict, context):
         status_code=201,
         methods="POST",
         body={
+            "credentials_name": credentials_name,
+            "description": description,
             "access_key": access_key,
             "secret_key": secret_key,
-            "credential_name": credential_name,
             "expiration": None,
-            "description": description,
         },
     )
