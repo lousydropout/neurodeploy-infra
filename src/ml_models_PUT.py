@@ -45,10 +45,10 @@ def create_presigned_post(
     return response
 
 
-MODEL_TYPES = {"tensorflow", "scikit-learn"}
-PERSISTENCE_TYPES = {"h5", "joblib", "pickle"}
+LIB_TYPE = {"tensorflow", "scikit-learn"}
+FILETYPES = {"h5", "joblib", "pickle"}
 
-MODEL_PERSISTENCE_TYPES = {
+MODEL_FILETYPES = {
     ("tensorflow", "h5"),
     ("scikit-learn", "joblib"),
     ("scikit-learn", "pickle"),
@@ -57,8 +57,8 @@ MODEL_PERSISTENCE_TYPES = {
 
 def validate_params(
     username: str,
-    model_type: str,
-    persistence_type: str,
+    lib_type: str,
+    filetype: str,
     model_name: str,
 ) -> list[str]:
     errors = []
@@ -71,27 +71,27 @@ def validate_params(
     #     # TODO: Just create the model for them here
     #     errors.append(f"Model '{model_name}' has not been created yet.")
 
-    # validate model_type value
-    if not model_type:
-        errors.append(f"Missing param: 'model_type' must be one of { MODEL_TYPES }")
-    elif model_type not in MODEL_TYPES:
+    # validate lib_type value
+    if not lib_type:
+        errors.append(f"Missing param: 'lib' must be one of { LIB_TYPE }")
+    elif lib_type not in LIB_TYPE:
         errors.append(
-            f"Invalid value for param 'model_type': 'model_type' must be one of { MODEL_TYPES }"
+            f"Invalid value for param 'lib': 'lib' must be one of { LIB_TYPE }"
         )
 
-    # validate persistence_type value
-    if not persistence_type:
+    # validate filetype value
+    if not filetype:
+        errors.append(f"Missing param: 'filetype' must be one of { FILETYPES }")
+    elif filetype not in FILETYPES:
         errors.append(
-            f"Missing param: 'persistence_type' must be one of { PERSISTENCE_TYPES }"
-        )
-    elif persistence_type not in PERSISTENCE_TYPES:
-        errors.append(
-            f"Invalid value for param 'persistence_type': 'persistence_type' must be one of { PERSISTENCE_TYPES }"
+            f"Invalid value for param 'filetype': 'filetype' must be one of { FILETYPES }"
         )
 
-    # validate (model_type, persistence_type) pair
-    if (model_type, persistence_type) not in MODEL_PERSISTENCE_TYPES:
-        errors.append("Invalid (model_type, persistence_type) pair")
+    # validate (lib_type, filetype) pair
+    if (lib_type, filetype) not in MODEL_FILETYPES:
+        errors.append(
+            f"Invalid (lib, filetype) pair: (lib, filetype) must be one of { MODEL_FILETYPES }"
+        )
 
     # validate model_name
     remaining = set(model_name).difference(
@@ -115,8 +115,8 @@ def handler(event: dict, context) -> dict:
     params = {**body, **query_params}  # query params take precedence
     print("params: ", params)
 
-    model_type = params.get("model_type")
-    persistence_type = params.get("persistence_type")
+    lib_type = params.get("lib")
+    filetype = params.get("filetype")
 
     path_params = event["path_params"]
     model_name = path_params["proxy"]
@@ -124,8 +124,8 @@ def handler(event: dict, context) -> dict:
     # validate params
     errors = validate_params(
         username=username,
-        model_type=model_type,
-        persistence_type=persistence_type,
+        lib_type=lib_type,
+        filetype=filetype,
         model_name=model_name,
     )
 
@@ -141,14 +141,14 @@ def handler(event: dict, context) -> dict:
         bucket_name=MODELS_S3_BUCKET,
         object_name=key,
         fields={
-            "x-amz-meta-model-type": model_type,
-            "x-amz-meta-persistence-type": persistence_type,
-            "Content-Type": f"model/{persistence_type}",
+            "x-amz-meta-model-type": lib_type,
+            "x-amz-meta-persistence-type": filetype,
+            "Content-Type": f"model/{filetype}",
         },
         conditions=[
-            {"x-amz-meta-model-type": model_type},
-            {"x-amz-meta-persistence-type": persistence_type},
-            {"Content-Type": f"model/{persistence_type}"},
+            {"x-amz-meta-model-type": lib_type},
+            {"x-amz-meta-persistence-type": filetype},
+            {"Content-Type": f"model/{filetype}"},
         ],
     )
     print("Response: ", json.dumps(response))
@@ -156,7 +156,7 @@ def handler(event: dict, context) -> dict:
     return cors.get_response(
         status_code=201,
         body={
-            "message": f"Please upload your {model_type} {persistence_type} model to complete the process.",
+            "message": f"Please upload your {lib_type} {filetype} model to complete the process.",
             **response,
         },
         methods="PUT",
