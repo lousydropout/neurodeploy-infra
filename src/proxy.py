@@ -91,7 +91,10 @@ def handler(event: dict, context) -> dict:
 
     # Further parse event
     model_location = parsed_event["path"]
-    payload = parsed_event["body"].get("payload") or ""
+    body = parsed_event["body"]
+    payload = body
+    if isinstance(body, dict) and "payload" in body:
+        payload = body["payload"] or ""
     print("model_location: ", model_location)
     print("payload: ", payload)
 
