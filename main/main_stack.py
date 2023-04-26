@@ -332,7 +332,11 @@ class MainStack(Stack):
             "ml-models",
             filename_overwrite="ml_models_DELETE",
             proxy=True,
-            tables=[(self.users, _READ), (self.creds, _READ)],
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.models, _READ_WRITE),
+            ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -353,6 +357,7 @@ class MainStack(Stack):
                 (self.creds, _READ),
                 (self.models, _READ_WRITE),
             ],
+            buckets=[(self.staging_bucket, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -361,8 +366,7 @@ class MainStack(Stack):
                 _APIGW_FULL_PERMISSION_POLICY
             )
         )
-        self.models_bucket.grant_read_write(PUT_ml_models.lambda_function)
-        self.staging_bucket.grant_read_write(PUT_ml_models.lambda_function)
+        # self.staging_bucket.grant_read_write(PUT_ml_models.lambda_function)
 
         GET_ml_models = self.add(
             api,
@@ -374,6 +378,7 @@ class MainStack(Stack):
                 (self.users, _READ),
                 (self.creds, _READ),
                 (self.usages, _READ_WRITE),
+                (self.models, _READ_WRITE),
             ],
             buckets=[(self.models_bucket, _READ)],
             secrets=[("jwt_secret", self.jwt_secret)],
@@ -389,8 +394,8 @@ class MainStack(Stack):
                 (self.users, _READ),
                 (self.creds, _READ),
                 (self.usages, _READ),
+                (self.models, _READ_WRITE),
             ],
-            buckets=[(self.models_bucket, _READ)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -553,7 +558,7 @@ class MainStack(Stack):
             security_groups=[self.sg],
         )
         execution_alias.grant_invoke(proxy_lambda)
-        self.models.grant_read_data(proxy_lambda)
+        self.models.grant_full_access(proxy_lambda)
 
         logs_queue = sqs.Queue(
             self,

@@ -1,44 +1,28 @@
 import os
 import json
+from helpers import dynamodb as ddb
 import boto3
 
-_MODEL_TYPE = "model/"
-_MODEL_TYPE_LENGTH = len(_MODEL_TYPE)
-_PING = "ping"
-
-PREFIX = os.environ["prefix"]
+_PREFIX = os.environ["prefix"]
 _REGION_NAME = os.environ["region_name"]
-MODELS_S3_BUCKET = f"{PREFIX}-models-{_REGION_NAME}"
+MODELS_S3_BUCKET = f"{_PREFIX}-models-{_REGION_NAME}"
 EXECUTION_LAMBDA_ARN = os.environ["lambda"]
 
 
 lambda_ = boto3.client("lambda")
 s3 = boto3.client("s3")
 
+# dynamodb boto3
+dynamodb_client = boto3.client("dynamodb")
+dynamodb = boto3.resource("dynamodb")
+MODELS_TABLE_NAME = f"{_PREFIX}_Models"
+MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
-def get_attributes(object_name: str) -> dict:
-    try:
-        response = s3.get_object(Bucket=MODELS_S3_BUCKET, Key=object_name)
-    except s3.exceptions.NoSuchKey:
-        raise Exception("The resource you requested does not exist.")
 
-    # parse response
-    metadata = response["Metadata"]
-    content_type = response["ContentType"]
-    last_modified = response["LastModified"]
-    # last_modified_timestamp = last_modified.isoformat()
-    model_type = metadata.get("model-type") or "missing"
-    persistence_type = (
-        content_type[_MODEL_TYPE_LENGTH:]
-        if content_type.startswith(_MODEL_TYPE)
-        else "missing"
-    )
-
-    return {
-        "model_type": model_type,
-        "persistence_type": persistence_type,
-        "last_modified": last_modified,
-    }
+def get_model_info(username: str, model_name: str) -> dict:
+    statement = f"SELECT * FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
+    response = dynamodb_client.execute_statement(Statement=statement)
+    return ddb.from_(response.get("Items", [{}])[0])
 
 
 def parse_event(event: dict) -> tuple[bool, dict]:
@@ -83,7 +67,7 @@ def handler(event: dict, context) -> dict:
             "headers": {
                 "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
                 "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-                "Access-Control-Allow-Methods": "POST",  # Allow only GET request
+                "Access-Control-Allow-Methods": "POST",  # Allow only POST request
                 "Access-Control-Allow-Headers": "Content-Type",
             },
             "body": json.dumps({"error_message": parsed_event["message"]}, default=str),
@@ -97,36 +81,24 @@ def handler(event: dict, context) -> dict:
         payload = body["payload"] or ""
     print("model_location: ", model_location)
     print("payload: ", payload)
-
-    # Get information from the s3 object's metadata
-    try:
-        model_attributes = get_attributes(object_name=model_location)
-    except Exception as err:
-        return {
-            "isBase64Encoded": False,
-            "statusCode": 404,
-            "headers": {
-                "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-                "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-                "Access-Control-Allow-Methods": "POST",  # Allow only GET request
-                "Access-Control-Allow-Headers": "Content-Type",
-            },
-            "body": json.dumps({"error_message": str(err)}, default=str),
-        }
-
-    print("model_attributes: ", json.dumps(model_attributes, default=str))
-
-    # If model is the initial PING, return "ok"
-    if model_attributes["model_type"] == _PING:
-        return {"isBase64Encoded": False, "statusCode": 200, "body": "ok"}
+    username, model_name = model_location.strip("/").split("/")
 
     # Create payload for the execution lambda
+    model_info = get_model_info(username=username, model_name=model_name)
+    # If model has yet to be uploaded,
+    if not model_info["uploaded"]:
+        return {
+            "isBase64Encoded": False,
+            "statusCode": 500,
+            "body": "ML model is mising. Unable to execute model.",
+        }
+
     lambda_payload = json.dumps(
         {
             "payload": payload,
             "model": model_location,
-            "persistence_type": model_attributes["persistence_type"],
-            "model_type": model_attributes["model_type"],
+            "persistence_type": model_info["filetype"],
+            "model_type": model_info["library"],
         },
         default=str,
     )
@@ -144,7 +116,7 @@ def handler(event: dict, context) -> dict:
         status_code, result = 429, "Too Many Requests"
     except Exception as err:
         print(err)
-        status_code, result = 400, "Too Many Requests"
+        status_code, result = 400, str(err)
     else:
         status_code = 200
         response = lambda_response["Payload"].read().decode()

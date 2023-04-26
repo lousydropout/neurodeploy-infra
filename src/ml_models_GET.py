@@ -1,26 +1,25 @@
 import os
-from datetime import datetime
-from helpers import cors
-from helpers import validation
+from helpers import cors, validation, dynamodb as ddb
 import boto3
 
-PREFIX = os.environ["prefix"]
+_PREFIX = os.environ["prefix"]
 _REGION_NAME = os.environ["region_name"]
-MODELS_S3_BUCKET = f"{PREFIX}-models-{_REGION_NAME}"
+MODELS_S3_BUCKET = f"{_PREFIX}-models-{_REGION_NAME}"
 
-s3 = boto3.client("s3")
+# dynamodb boto3
+dynamodb_client = boto3.client("dynamodb")
+dynamodb = boto3.resource("dynamodb")
+MODELS_TABLE_NAME = f"{_PREFIX}_Models"
+MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
 def get_model_info(username: str, model_name: str) -> dict:
-    key = f"{username}/{model_name}"
-    res = s3.head_object(Bucket=MODELS_S3_BUCKET, Key=key)
-    updated_at: datetime = res["LastModified"]
-    return {
-        "model_name": model_name,
-        "model_type": res["Metadata"]["model-type"],
-        "persistence_type": res["ContentType"].split("/")[1],
-        "uploaded_at": updated_at.isoformat(),
-    }
+    statement = f"SELECT sk, library, filetype, created_at, updated_at FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
+    response = dynamodb_client.execute_statement(Statement=statement)
+    result = ddb.from_(response.get("Items", [{}])[0])
+
+    result["model_name"] = result.pop("sk")
+    return result
 
 
 @validation.check_authorization

@@ -15,8 +15,15 @@ _PREFIX = os.environ["prefix"]
 
 # dynamodb boto3
 MODELS_TABLE_NAME = f"{_PREFIX}_Models"
+dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
 MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
+
+
+def get_model(username: str, model_name: str) -> dict:
+    statement = f"SELECT * FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
+    response = dynamodb_client.execute_statement(Statement=statement)
+    return ddb.from_(response.get("Items", [{}])[0])
 
 
 def upsert_ml_model_record(
@@ -26,18 +33,17 @@ def upsert_ml_model_record(
     filetype: str,
     bucket: str,
     key: str,
+    is_public: bool = False,
 ):
-    record = {
-        "pk": f"username|{username}",
-        "sk": model_name,
-        "lib": lib_type,
-        "filetype": filetype,
-        "updated_at": datetime.utcnow().isoformat(),
-        "uploaded": True,
-        "deleted": False,
-        "bucket": bucket,
-        "key": key,
-    }
+    record = get_model(username=username, model_name=model_name)
+    record.update(
+        {
+            "updated_at": datetime.utcnow().isoformat(),
+            "uploaded": True,
+            "bucket": bucket,
+            "key": key,
+        }
+    )
     MODELS_TABLE.put_item(Item=record)
 
 

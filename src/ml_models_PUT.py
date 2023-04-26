@@ -19,6 +19,32 @@ dynamodb = boto3.resource("dynamodb")
 MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
+def upsert_ml_model_record(
+    username: str,
+    model_name: str,
+    lib_type: str,
+    filetype: str,
+    bucket: str,
+    key: str,
+    is_public: bool = False,
+):
+    record = {
+        "pk": f"username|{username}",
+        "sk": model_name,
+        "library": lib_type,
+        "filetype": filetype,
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+        "deleted_at": None,
+        "uploaded": False,
+        "deleted": False,
+        "bucket": bucket,
+        "key": key,
+        "is_public": is_public,
+    }
+    MODELS_TABLE.put_item(Item=record)
+
+
 # def get_api_id(username: str) -> str:
 #     key = ddb.to_({"pk": username, "sk": "resources"})
 #     response = dynamodb.get_item(TableName=_APIS_TABLE_NAME, Key=key)
@@ -110,26 +136,6 @@ def validate_params(
     return errors
 
 
-def upsert_ml_model_record(
-    username: str,
-    model_name: str,
-    lib_type: str,
-    filetype: str,
-):
-    record = {
-        "pk": f"username|{username}",
-        "sk": model_name,
-        "lib": lib_type,
-        "filetype": filetype,
-        "updated_at": datetime.utcnow().isoformat(),
-        "uploaded": False,
-        "deleted": False,
-        "bucket": None,
-        "key": None,
-    }
-    MODELS_TABLE.put_item(Item=record)
-
-
 @validation.check_authorization
 def handler(event: dict, context) -> dict:
     username = event["username"]
@@ -142,6 +148,12 @@ def handler(event: dict, context) -> dict:
 
     lib_type = params.get("lib")
     filetype = params.get("filetype")
+    _is_public = params.get("is_public")
+    is_public = (
+        bool(_is_public)
+        if _is_public and _is_public.lower() in ("true", "false")
+        else False
+    )
 
     path_params = event["path_params"]
     model_name = path_params["proxy"]
@@ -166,6 +178,9 @@ def handler(event: dict, context) -> dict:
         model_name=model_name,
         lib_type=lib_type,
         filetype=filetype,
+        bucket=None,
+        key=None,
+        is_public=is_public,
     )
 
     # Create presigned post
