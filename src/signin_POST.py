@@ -1,3 +1,4 @@
+import os
 from typing import Tuple
 import json
 from hashlib import sha256
@@ -5,11 +6,12 @@ import boto3
 from helpers import cors, dynamodb as ddb, validation
 from helpers.decimalEncoder import DecimalEncoder
 
+PREFIX = os.environ["prefix"]
 
 dynamodb = boto3.client("dynamodb")
 
 UTF_8 = "utf-8"
-_USERS_TABLE_NAME = "neurodeploy_Users"
+_USERS_TABLE_NAME = f"{PREFIX}_Users"
 
 
 def is_password_correct(password: str, salt: str, hashed: str) -> bool:

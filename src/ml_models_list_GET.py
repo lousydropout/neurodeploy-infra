@@ -3,8 +3,9 @@ from datetime import datetime
 from helpers import cors, validation
 import boto3
 
+PREFIX = os.environ["prefix"]
 _REGION_NAME = os.environ["region_name"]
-MODELS_S3_BUCKET = f"neurodeploy-models-{_REGION_NAME}"
+MODELS_S3_BUCKET = f"{PREFIX}-models-{_REGION_NAME}"
 
 s3 = boto3.client("s3")
 

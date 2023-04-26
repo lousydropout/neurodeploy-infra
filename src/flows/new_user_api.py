@@ -8,11 +8,12 @@ import boto3
 _ERROR_429 = (
     "429 error when attempting to create API Gateway domain name. Sleep 10 seconds."
 )
+PREFIX = os.environ["prefix"]
 
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
-_APIS_TABLE_NAME = "neurodeploy_Apis"
+_APIS_TABLE_NAME = f"{PREFIX}_Apis"
 _API_TABLE = dynamodb.Table(_APIS_TABLE_NAME)
 
 # other boto3 clients

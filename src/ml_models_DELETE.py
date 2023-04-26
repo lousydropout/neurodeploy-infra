@@ -4,9 +4,10 @@ from helpers import cors
 from helpers import validation
 import boto3
 
+PREFIX = os.environ["prefix"]
 _REGION_NAME = os.environ["region_name"]
-MODELS_S3_BUCKET = f"neurodeploy-models-{_REGION_NAME}"
-LOGS_S3_BUCKET = f"neurodeploy-logs-{_REGION_NAME}"
+MODELS_S3_BUCKET = f"{PREFIX}-models-{_REGION_NAME}"
+LOGS_S3_BUCKET = f"{PREFIX}-logs-{_REGION_NAME}"
 
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")

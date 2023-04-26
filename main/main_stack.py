@@ -65,14 +65,17 @@ class MainStack(Stack):
 
     def import_lambda_layers(self):
         jwt_layer_arn = {
-            "us-west-1": "arn:aws:lambda:us-west-1:410585721938:layer:pyjwt:1",
-            "us-east-2": "arn:aws:lambda:us-east-2:410585721938:layer:pyjwt:1",
+            "prod": {
+                "us-west-1": "arn:aws:lambda:us-west-1:410585721938:layer:pyjwt:1",
+                "us-east-2": "arn:aws:lambda:us-east-2:410585721938:layer:pyjwt:1",
+            },
+            "dev": {"us-east-1": "arn:aws:lambda:us-east-1:460216766486:layer:pyjwt:1"},
         }
 
         self.py_jwt_layer = lambda_.LayerVersion.from_layer_version_arn(
             self,
             "py_jwt_layer",
-            layer_version_arn=jwt_layer_arn[self.region],
+            layer_version_arn=jwt_layer_arn[self.env_][self.region],
         )
 
     def import_hosted_zone(self) -> route53.IHostedZone:
@@ -94,6 +97,7 @@ class MainStack(Stack):
         # environment variables for the lambda function
         env = {table.table_name: table.table_arn for (table, _) in tables or []}
         env["region_name"] = self.region_name
+        env["prefix"] = self.prefix
         if queue:
             env["queue"] = queue.queue_url
 
@@ -204,7 +208,7 @@ class MainStack(Stack):
         )
 
     def create_api_gateway_and_lambdas(
-        self, proxy_lambda: lambda_.Function
+        self,
     ) -> Tuple[apigw.RestApi, Dict[str, LambdaQueueTuple]]:
         self.apigw_resources: Dict[str, Dict] = {}
 
@@ -235,10 +239,6 @@ class MainStack(Stack):
         POST_signup.lambda_function.add_environment(
             "hosted_zone_id", self.hosted_zone.hosted_zone_id
         )
-        POST_signup.lambda_function.add_environment(
-            "proxy_lambda", proxy_lambda.function_name
-        )
-        proxy_lambda.grant_invoke(POST_signup.lambda_function)
         POST_signup.lambda_function.role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
         )
@@ -347,7 +347,11 @@ class MainStack(Stack):
             "ml-models",
             filename_overwrite="ml_models_PUT",
             proxy=True,
-            tables=[(self.users, _READ), (self.creds, _READ)],
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.models, _READ_WRITE),
+            ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
@@ -357,6 +361,7 @@ class MainStack(Stack):
             )
         )
         self.models_bucket.grant_read_write(PUT_ml_models.lambda_function)
+        self.staging_bucket.grant_read_write(PUT_ml_models.lambda_function)
 
         GET_ml_models = self.add(
             api,
@@ -542,6 +547,7 @@ class MainStack(Stack):
             environment={
                 "region_name": self.region_name,
                 "lambda": execution_alias.function_arn,
+                "prefix": self.prefix,
             },
             security_groups=[self.sg],
         )
@@ -607,6 +613,27 @@ class MainStack(Stack):
         )
         return sg
 
+    def create_s3_staging_trigger(self):
+        # create lambda and have it triggered by
+        # s3 bucket: self.staging_bucket
+        # moving the file over to s3 bucket self.models_bucket
+        # and log stuff in the dynamodb table self.models
+        self.staging_trigger = lambda_.Function(
+            self,
+            "staging_trigger",
+            function_name=f"{self.prefix}-staging-trigger",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset("src"),
+            handler="s3_staging_trigger.handler",
+            environment={
+                "prefix": self.prefix,
+            },
+            timeout=Duration.seconds(29),
+        )
+        self.staging_bucket.grant_read_write(self.staging_trigger)
+        self.models_bucket.grant_read_write(self.staging_trigger)
+        self.models.grant_full_access(self.staging_trigger)
+
     def __init__(
         self,
         scope: Construct,
@@ -618,10 +645,12 @@ class MainStack(Stack):
         buckets: Dict[str, s3.Bucket],
         vpc: ec2.Vpc,
         lambda_image: str,
+        env_: str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        self.env_ = env_
         self.account_number = account_number
         self.prefix = prefix
         self.region_name = region_name
@@ -629,6 +658,7 @@ class MainStack(Stack):
 
         self.models_bucket = buckets["models_bucket"]
         self.logs_bucket = buckets["models_bucket"]
+        self.staging_bucket = buckets["staging_bucket"]
 
         self.vpc = vpc
         self.subnets = self.vpc.select_subnets(
@@ -653,7 +683,7 @@ class MainStack(Stack):
         self.execution_alias, self.proxy = self.create_proxy_lambda()
 
         # API Gateway and lambda-integrated routes
-        self.api, rest = self.create_api_gateway_and_lambdas(self.proxy.lambda_function)
+        self.api, rest = self.create_api_gateway_and_lambdas()
         self.POST_signup = rest["POST_signup"]
         self.POST_signin = rest["POST_signin"]
         self.GET_creds = rest["GET_creds"]
@@ -665,3 +695,6 @@ class MainStack(Stack):
         # Additional lambdas
         self.new_user_lambda = self.create_new_user_lambda()
         self.delete_user_lambda = self.create_delete_user_lambda()
+
+        # Trigger lambda when new file is uploaded to staging bucket
+        self.create_s3_staging_trigger()

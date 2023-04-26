@@ -1,0 +1,3 @@
+#!/bin/bash
+rm -rf cdk.out
+cdk deploy MainStack-us-east-1 --require-approval any-change --profile dev

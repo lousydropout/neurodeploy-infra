@@ -1,0 +1,3 @@
+#!/bin/bash
+rm -rf cdk.out
+cdk deploy BaseStack --require-approval any-change --profile dev

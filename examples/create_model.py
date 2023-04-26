@@ -1,6 +1,8 @@
+import os
 import requests
 
-MODELS_S3_BUCKET = "neurodeploy-models-us-west-1"
+PREFIX = os.environ["prefix"]
+MODELS_S3_BUCKET = f"{PREFIX}-models-us-west-1"
 
 
 token = ""

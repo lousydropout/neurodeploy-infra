@@ -1,13 +1,16 @@
+import os
 import json
 from helpers import cors
 from helpers import dynamodb as ddb
 from helpers import validation
 import boto3
 
+PREFIX = os.environ["prefix"]
+
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
-_CREDS_TABLE_NAME = "neurodeploy_Creds"
+_CREDS_TABLE_NAME = f"{PREFIX}_Creds"
 
 
 def delete_credential(username: str, credential_name) -> list[dict]:

@@ -12,11 +12,12 @@ import jwt
 
 _ALGO = "HS256"
 _BEARER = "Bearer"  # The space at the end of the string is supposed to be there
+PREFIX = os.environ["prefix"]
 _REGION: str = os.environ["region_name"]
 _JWT_SECRET_NAME = os.environ["jwt_secret"]
 _SECRETS: dict[str, str] = secrets.get_secret(_JWT_SECRET_NAME, _REGION)
-_USERS_TABLE_NAME = "neurodeploy_Users"
-_CREDS_TABLE_NAME = "neurodeploy_Creds"
+_USERS_TABLE_NAME = f"{PREFIX}_Users"
+_CREDS_TABLE_NAME = f"{PREFIX}_Creds"
 UTF_8 = "utf-8"
 
 dynamo = boto3.client("dynamodb")

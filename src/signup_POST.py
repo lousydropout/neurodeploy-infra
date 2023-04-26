@@ -1,3 +1,4 @@
+import os
 import json
 from hashlib import sha256
 from uuid import uuid4 as uuid
@@ -6,8 +7,9 @@ from helpers import cors, validation
 import boto3
 
 
+PREFIX = os.environ["prefix"]
 UTF_8 = "utf-8"
-_USERS_TABLE_NAME = "neurodeploy_Users"
+_USERS_TABLE_NAME = f"{PREFIX}_Users"
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
 _USERS_TABLE = dynamodb.Table(_USERS_TABLE_NAME)

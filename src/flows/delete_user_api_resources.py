@@ -1,9 +1,12 @@
+import os
 import json
 from helpers import dynamodb as ddb
 import boto3
 
+PREFIX = os.environ["prefix"]
+
 # dynamodb boto3
-_APIS_TABLE_NAME = "neurodeploy_Apis"
+_APIS_TABLE_NAME = f"{PREFIX}_Apis"
 dynamodb_client = boto3.client("dynamodb")
 
 # other boto3 clients

@@ -5,8 +5,9 @@ from helpers import cors, validation
 import boto3
 from botocore.exceptions import ClientError
 
+PREFIX = os.environ["prefix"]
 _REGION_NAME = os.environ["region_name"]
-MODELS_S3_BUCKET = f"neurodeploy-models-{_REGION_NAME}"
+MODELS_S3_BUCKET = f"{PREFIX}-models-{_REGION_NAME}"
 
 
 apigw = boto3.client("apigateway")

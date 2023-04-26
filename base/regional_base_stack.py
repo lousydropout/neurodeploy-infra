@@ -25,6 +25,17 @@ class RegionalBaseStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
+        self.staging_bucket = s3.Bucket(
+            self,
+            f"{prefix}_staging",
+            bucket_name=f"{prefix}-staging-{region}",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            enforce_ssl=True,
+            versioned=True,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
         self.logs_bucket = s3.Bucket(
             self,
             f"{prefix}_logs",

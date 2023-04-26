@@ -1,3 +1,4 @@
+import os
 import json
 import string
 from hashlib import sha256
@@ -7,11 +8,12 @@ from helpers import validation
 import boto3
 
 UTF_8 = "utf-8"
+PREFIX = os.environ["prefix"]
 
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
-_CREDS_TABLE_NAME = "neurodeploy_Creds"
+_CREDS_TABLE_NAME = f"{PREFIX}_Creds"
 _CREDS_TABLE = dynamodb.Table(_CREDS_TABLE_NAME)
 
 

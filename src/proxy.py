@@ -1,14 +1,14 @@
 import os
 import json
-import re
 import boto3
 
 _MODEL_TYPE = "model/"
 _MODEL_TYPE_LENGTH = len(_MODEL_TYPE)
 _PING = "ping"
 
+PREFIX = os.environ["prefix"]
 _REGION_NAME = os.environ["region_name"]
-MODELS_S3_BUCKET = f"neurodeploy-models-{_REGION_NAME}"
+MODELS_S3_BUCKET = f"{PREFIX}-models-{_REGION_NAME}"
 EXECUTION_LAMBDA_ARN = os.environ["lambda"]
 
 
