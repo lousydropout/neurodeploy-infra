@@ -26,6 +26,32 @@ def get_model_info(username: str, model_name: str) -> dict:
     return ddb.from_(response.get("Items", [{}])[0])
 
 
+def insert_ml_model_record(
+    username: str,
+    model_name: str,
+    lib_type: str,
+    filetype: str,
+    bucket: str,
+    key: str,
+    is_public: bool = False,
+):
+    record = {
+        "pk": f"username|{username}",
+        "sk": model_name,
+        "library": lib_type,
+        "filetype": filetype,
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+        "deleted_at": None,
+        "uploaded": False,
+        "deleted": False,
+        "bucket": bucket,
+        "key": key,
+        "is_public": is_public,
+    }
+    MODELS_TABLE.put_item(Item=record)
+
+
 def upsert_ml_model_record(
     username: str,
     model_name: str,
@@ -35,23 +61,34 @@ def upsert_ml_model_record(
     key: str,
     is_public: bool = False,
 ):
-    record = get_model_info(username=username, model_name=model_name)
-
-    record.update(
-        {
-            "pk": f"username|{username}",
-            "sk": model_name,
-            "library": lib_type,
-            "filetype": filetype,
-            "updated_at": datetime.utcnow().isoformat(),
-            "deleted_at": None,
-            "deleted": False,
-            "bucket": bucket,
-            "key": key,
-            "is_public": is_public,
-        }
-    )
-    MODELS_TABLE.put_item(Item=record)
+    try:
+        record = get_model_info(username=username, model_name=model_name)
+    except:
+        insert_ml_model_record(
+            username=username,
+            model_name=model_name,
+            lib_type=lib_type,
+            filetype=filetype,
+            bucket=None,
+            key=None,
+            is_public=is_public,
+        )
+    else:
+        record.update(
+            {
+                "pk": f"username|{username}",
+                "sk": model_name,
+                "library": lib_type,
+                "filetype": filetype,
+                "updated_at": datetime.utcnow().isoformat(),
+                "deleted_at": None,
+                "deleted": False,
+                "bucket": bucket,
+                "key": key,
+                "is_public": is_public,
+            }
+        )
+        MODELS_TABLE.put_item(Item=record)
 
 
 # def get_api_id(username: str) -> str:
