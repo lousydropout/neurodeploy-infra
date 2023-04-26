@@ -1,18 +1,13 @@
-import os
 import requests
 
-PREFIX = os.environ["prefix"]
-MODELS_S3_BUCKET = f"{PREFIX}-models-us-west-1"
-
-
-token = ""
-model_name = ""
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InZpbmNlbnQiLCJleHAiOjE2ODI2MTM0NzJ9.VhAE0u5YNFj1VTKZsW0IQKD-odI6y4Cbb03nnzHZ5xA"
+model_name = "model1"
 model_type = "tensorflow"
 persistence_type = "h5"
 
 # Create model
 http_response = requests.put(
-    url=f"https://user-api.playingwithml.com/ml-models/{model_name}?model_type={model_type}&persistence_type={persistence_type}",
+    url=f"https://user-api.playingwithml.com/ml-models/{model_name}?lib={model_type}&filetype={persistence_type}",
     headers={"Authorization": f"Bearer {token}"},
 )
 x = http_response.json()

@@ -1,18 +1,22 @@
 import os
+from uuid import uuid4 as uuid
+from datetime import datetime
 import string
 import json
 from helpers import cors, validation
 import boto3
 from botocore.exceptions import ClientError
 
-PREFIX = os.environ["prefix"]
+_PREFIX = os.environ["prefix"]
 _REGION_NAME = os.environ["region_name"]
-MODELS_S3_BUCKET = f"{PREFIX}-models-{_REGION_NAME}"
-
+MODELS_S3_BUCKET = f"{_PREFIX}-models-{_REGION_NAME}"
+STAGING_S3_BUCKET = f"{_PREFIX}-staging-{_REGION_NAME}"
+MODELS_TABLE_NAME = f"{_PREFIX}_Models"
 
 apigw = boto3.client("apigateway")
 s3 = boto3.client("s3")
-dynamodb = boto3.client("dynamodb")
+dynamodb = boto3.resource("dynamodb")
+MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
 # def get_api_id(username: str) -> str:
@@ -106,6 +110,26 @@ def validate_params(
     return errors
 
 
+def upsert_ml_model_record(
+    username: str,
+    model_name: str,
+    lib_type: str,
+    filetype: str,
+):
+    record = {
+        "pk": f"username|{username}",
+        "sk": model_name,
+        "lib": lib_type,
+        "filetype": filetype,
+        "updated_at": datetime.utcnow().isoformat(),
+        "uploaded": False,
+        "deleted": False,
+        "bucket": None,
+        "key": None,
+    }
+    MODELS_TABLE.put_item(Item=record)
+
+
 @validation.check_authorization
 def handler(event: dict, context) -> dict:
     username = event["username"]
@@ -136,19 +160,30 @@ def handler(event: dict, context) -> dict:
             status_code=400, body={"errors": errors}, methods="PUT"
         )
 
+    # create record in db
+    upsert_ml_model_record(
+        username=username,
+        model_name=model_name,
+        lib_type=lib_type,
+        filetype=filetype,
+    )
+
     # Create presigned post
-    key = f"{username}/{model_name}"
     response = create_presigned_post(
-        bucket_name=MODELS_S3_BUCKET,
-        object_name=key,
+        bucket_name=STAGING_S3_BUCKET,
+        object_name=str(uuid()),
         fields={
-            "x-amz-meta-model-type": lib_type,
-            "x-amz-meta-persistence-type": filetype,
+            "x-amz-meta-username": username,
+            "x-amz-meta-model_name": model_name,
+            "x-amz-meta-lib": lib_type,
+            "x-amz-meta-filetype": filetype,
             "Content-Type": f"model/{filetype}",
         },
         conditions=[
-            {"x-amz-meta-model-type": lib_type},
-            {"x-amz-meta-persistence-type": filetype},
+            {"x-amz-meta-username": username},
+            {"x-amz-meta-model_name": model_name},
+            {"x-amz-meta-lib": lib_type},
+            {"x-amz-meta-filetype": filetype},
             {"Content-Type": f"model/{filetype}"},
         ],
     )

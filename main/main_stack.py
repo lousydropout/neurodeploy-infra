@@ -2,6 +2,7 @@ from typing import NamedTuple, Tuple, List, Dict
 import aws_cdk as cdk
 from aws_cdk import (
     Duration,
+    RemovalPolicy,
     Stack,
     aws_apigateway as apigw,
     aws_certificatemanager as acm,
@@ -634,6 +635,24 @@ class MainStack(Stack):
         self.models_bucket.grant_read_write(self.staging_trigger)
         self.models.grant_full_access(self.staging_trigger)
 
+        self.staging_trigger.add_event_source(self.staging_s3_trigger)
+
+    def create_staging_bucket(self):
+        self.staging_bucket = s3.Bucket(
+            self,
+            f"{self.prefix}_staging",
+            bucket_name=f"{self.prefix}-staging-{self.region_name}",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            enforce_ssl=True,
+            versioned=True,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        self.staging_s3_trigger = event_sources.S3EventSource(
+            self.staging_bucket, events=[s3.EventType.OBJECT_CREATED]
+        )
+
     def __init__(
         self,
         scope: Construct,
@@ -658,7 +677,7 @@ class MainStack(Stack):
 
         self.models_bucket = buckets["models_bucket"]
         self.logs_bucket = buckets["models_bucket"]
-        self.staging_bucket = buckets["staging_bucket"]
+        self.create_staging_bucket()
 
         self.vpc = vpc
         self.subnets = self.vpc.select_subnets(

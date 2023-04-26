@@ -1,4 +1,10 @@
-from aws_cdk import RemovalPolicy, Stack, aws_ec2 as ec2, aws_s3 as s3
+from aws_cdk import (
+    RemovalPolicy,
+    Stack,
+    aws_ec2 as ec2,
+    aws_lambda_event_sources as event_sources,
+    aws_s3 as s3,
+)
 from constructs import Construct
 
 
@@ -18,17 +24,6 @@ class RegionalBaseStack(Stack):
             self,
             f"{prefix}_models",
             bucket_name=f"{prefix}-models-{region}",
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            encryption=s3.BucketEncryption.S3_MANAGED,
-            enforce_ssl=True,
-            versioned=True,
-            removal_policy=RemovalPolicy.RETAIN,
-        )
-
-        self.staging_bucket = s3.Bucket(
-            self,
-            f"{prefix}_staging",
-            bucket_name=f"{prefix}-staging-{region}",
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             encryption=s3.BucketEncryption.S3_MANAGED,
             enforce_ssl=True,

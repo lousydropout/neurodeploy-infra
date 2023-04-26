@@ -60,10 +60,7 @@ for region in _REGIONS:
         domain_name=DOMAIN_NAME,
         account_number=_ACCOUNT,
         region_name=region,
-        buckets={
-            "models_bucket": base[f"RegionalBase-{region}"].models_bucket,
-            "staging_bucket": base[f"RegionalBase-{region}"].staging_bucket,
-        },
+        buckets={"models_bucket": base[f"RegionalBase-{region}"].models_bucket},
         vpc=base[f"RegionalBase-{region}"].vpc,
         lambda_image=_BASE_IMAGE,
         env_=env_,
