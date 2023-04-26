@@ -17,7 +17,7 @@ def get_models(username: str) -> list[dict]:
     results = [ddb.from_(x) for x in response.get("Items", [])]
     for result in results:
         result["model_name"] = result.pop("sk")
-    return results
+    return [result for result in results if not result["deleted"]]
 
 
 @validation.check_authorization

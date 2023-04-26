@@ -366,7 +366,27 @@ class MainStack(Stack):
                 _APIGW_FULL_PERMISSION_POLICY
             )
         )
-        # self.staging_bucket.grant_read_write(PUT_ml_models.lambda_function)
+
+        POST_ml_models = self.add(
+            api,
+            "POST",
+            "ml-models",
+            filename_overwrite="ml_models_POST",
+            proxy=True,
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.models, _READ_WRITE),
+            ],
+            buckets=[(self.staging_bucket, _READ_WRITE)],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+        POST_ml_models.lambda_function.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                _APIGW_FULL_PERMISSION_POLICY
+            )
+        )
 
         GET_ml_models = self.add(
             api,

@@ -27,7 +27,7 @@ def get_model(username: str, model_name: str) -> dict:
     return ddb.from_(response.get("Items", [{}])[0])
 
 
-def delete_model(username: str, model_name: str) -> tuple(bool, str):
+def delete_model(username: str, model_name: str) -> tuple[bool, str]:
     try:
         record = get_model(username=username, model_name=model_name)
     except Exception as err:

@@ -4,7 +4,7 @@ import json
 from hashlib import sha256
 import boto3
 from helpers import cors, dynamodb as ddb, validation
-from helpers.decimalEncoder import DecimalEncoder
+from helpers.decimal_encoder import DecimalEncoder
 
 PREFIX = os.environ["prefix"]
 

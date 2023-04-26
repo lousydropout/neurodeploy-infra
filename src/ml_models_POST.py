@@ -3,7 +3,7 @@ from uuid import uuid4 as uuid
 from datetime import datetime
 import string
 import json
-from helpers import cors, validation, dynamodb as ddb
+from helpers import cors, validation
 import boto3
 from botocore.exceptions import ClientError
 
@@ -15,15 +15,8 @@ MODELS_TABLE_NAME = f"{_PREFIX}_Models"
 
 apigw = boto3.client("apigateway")
 s3 = boto3.client("s3")
-dynamodb_client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
 MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
-
-
-def get_model_info(username: str, model_name: str) -> dict:
-    statement = f"SELECT * FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
-    response = dynamodb_client.execute_statement(Statement=statement)
-    return ddb.from_(response.get("Items", [{}])[0])
 
 
 def upsert_ml_model_record(
@@ -35,22 +28,20 @@ def upsert_ml_model_record(
     key: str,
     is_public: bool = False,
 ):
-    record = get_model_info(username=username, model_name=model_name)
-
-    record.update(
-        {
-            "pk": f"username|{username}",
-            "sk": model_name,
-            "library": lib_type,
-            "filetype": filetype,
-            "updated_at": datetime.utcnow().isoformat(),
-            "deleted_at": None,
-            "deleted": False,
-            "bucket": bucket,
-            "key": key,
-            "is_public": is_public,
-        }
-    )
+    record = {
+        "pk": f"username|{username}",
+        "sk": model_name,
+        "library": lib_type,
+        "filetype": filetype,
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+        "deleted_at": None,
+        "uploaded": False,
+        "deleted": False,
+        "bucket": bucket,
+        "key": key,
+        "is_public": is_public,
+    }
     MODELS_TABLE.put_item(Item=record)
 
 
