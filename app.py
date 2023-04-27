@@ -28,7 +28,7 @@ else:
 _BASE_IMAGE = next(
     image["imageDigest"]
     for image in ecr.list_images(repositoryName="lambda_runtime")["imageIds"]
-    if image["imageTag"] == "latest"
+    if image.get("imageTag", "") == "latest"
 )
 
 app = cdk.App()
