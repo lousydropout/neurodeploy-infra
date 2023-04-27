@@ -699,7 +699,7 @@ class MainStack(Stack):
             self,
             "proxy_api",
             handler=proxy_lambda,
-            proxy=True,
+            proxy=False,
             domain_name=apigw.DomainNameOptions(
                 certificate=self.main_cert,
                 domain_name=f"api.{self.domain_name}",
@@ -708,6 +708,11 @@ class MainStack(Stack):
             deploy=True,
             endpoint_types=[apigw.EndpointType.REGIONAL],
         )
+        username = proxy_api.root.add_resource("{username}")
+        model_name = username.add_resource("{model_name}")
+        model_name.add_method("GET")  # GET /{username}/{model_name}
+        model_name.add_method("POST")  # POST /{username}/{model_name}
+
         route53.ARecord(
             self,
             "proxy-api-a-record",
