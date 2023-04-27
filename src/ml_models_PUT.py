@@ -202,7 +202,7 @@ def handler(event: dict, context) -> dict:
     )
 
     path_params = event["path_params"]
-    model_name = path_params["proxy"]
+    model_name = path_params["model_name"]
 
     # validate params
     errors = validate_params(

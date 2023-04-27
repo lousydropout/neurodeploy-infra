@@ -1,4 +1,6 @@
 import os
+from uuid import uuid4 as uuid
+from datetime import datetime
 from helpers import cors, validation, dynamodb as ddb
 import boto3
 
@@ -13,13 +15,16 @@ MODELS_TABLE_NAME = f"{_PREFIX}_Models"
 MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
-def get_model_info(username: str, model_name: str) -> dict:
-    statement = f"SELECT sk, library, filetype, created_at, updated_at FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
-    response = dynamodb_client.execute_statement(Statement=statement)
-    result = ddb.from_(response.get("Items", [{}])[0])
-
-    result["model_name"] = result.pop("sk")
-    return result
+def insert_api_key_record(username: str, model_name: str):
+    api_key = str(uuid())
+    record = {
+        "pk": f"username|{username}",
+        "sk": f"{model_name}|{api_key}",
+        "api_key": api_key,
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    MODELS_TABLE.put_item(Item=record)
 
 
 @validation.check_authorization
@@ -30,6 +35,6 @@ def handler(event: dict, context):
 
     return cors.get_response(
         status_code=200,
-        body=get_model_info(username=username, model_name=model_name),
+        body=insert_api_key_record(username=username, model_name=model_name),
         methods="GET",
     )

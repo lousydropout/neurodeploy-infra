@@ -13,13 +13,11 @@ MODELS_TABLE_NAME = f"{_PREFIX}_Models"
 MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
-def get_model_info(username: str, model_name: str) -> dict:
-    statement = f"SELECT sk, library, filetype, created_at, updated_at FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
+def delete_api_key(username: str, model_name: str, api_key: str) -> dict:
+    statement = f"DELETE FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}|{api_key}';"
     response = dynamodb_client.execute_statement(Statement=statement)
-    result = ddb.from_(response.get("Items", [{}])[0])
 
-    result["model_name"] = result.pop("sk")
-    return result
+    return response
 
 
 @validation.check_authorization
@@ -27,9 +25,10 @@ def handler(event: dict, context):
     username = event["username"]
     path_params = event["path_params"]
     model_name = path_params["model_name"]
+    api_key = path_params["api_key"]
 
     return cors.get_response(
         status_code=200,
-        body=get_model_info(username=username, model_name=model_name),
+        body=delete_api_key(username=username, model_name=model_name, api_key=api_key),
         methods="GET",
     )

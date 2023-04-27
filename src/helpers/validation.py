@@ -5,7 +5,7 @@ import functools
 from hashlib import sha256
 import json
 
-from helpers import dynamodb as ddb, secrets
+from helpers import cors, dynamodb as ddb, secrets
 
 import boto3
 import jwt
@@ -119,6 +119,19 @@ def error_response(message: str) -> dict:
 def check_authorization(func):
     @functools.wraps(func)
     def f(event: dict, context):
+        try:
+            return g(event, context)
+        except Exception as err:
+            print("Error at validation: ", err)
+            return cors.get_response(
+                body={"error": "Unable to validate user"},
+                status_code=500,
+                headers="*",
+                methods="POST",
+            )
+
+    @functools.wraps(f)
+    def g(event: dict, context):
         print(f"Event: {json.dumps(event)}")
         # Parse event
         headers = event.get("headers") or {}

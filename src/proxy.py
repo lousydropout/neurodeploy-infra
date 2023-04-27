@@ -1,6 +1,6 @@
 import os
 import json
-from helpers import dynamodb as ddb
+from helpers import cors, dynamodb as ddb
 import boto3
 
 _PREFIX = os.environ["prefix"]
@@ -19,10 +19,18 @@ MODELS_TABLE_NAME = f"{_PREFIX}_Models"
 MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
-def get_model_info(username: str, model_name: str) -> dict:
-    statement = f"SELECT * FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
+def get_model_info(username: str, model_name: str) -> tuple[dict, set[str]]:
+    statement = f"SELECT * FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk >= '{model_name}' ORDER BY sk;"
     response = dynamodb_client.execute_statement(Statement=statement)
-    return ddb.from_(response.get("Items", [{}])[0])
+    results = [ddb.from_(x) for x in response.get("Items", [])]
+    print("get_model_info results: ", json.dumps(results, default=str))
+    if not results:
+        raise Exception(f"Unable to locate model '{model_name}'")
+
+    model_info = results[0]
+    api_keys = set((x["api_key"] for x in results[1:]))
+
+    return model_info, api_keys
 
 
 def parse_event(event: dict) -> tuple[bool, dict]:
@@ -58,20 +66,28 @@ def parse_event(event: dict) -> tuple[bool, dict]:
 
 
 def handler(event: dict, context) -> dict:
+    try:
+        return main(event)
+    except Exception as err:
+        print("Error at main: ", err)
+        return cors.get_response(
+            body={"error": str(err)},
+            status_code=500,
+            headers="*",
+            methods="POST",
+        )
+
+
+def main(event: dict) -> dict:
     print("Event: ", json.dumps(event))
     success, parsed_event = parse_event(event)
     if not success:
-        return {
-            "isBase64Encoded": False,
-            "statusCode": parsed_event["status_code"],
-            "headers": {
-                "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-                "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-                "Access-Control-Allow-Methods": "POST",  # Allow only POST request
-                "Access-Control-Allow-Headers": "Content-Type",
-            },
-            "body": json.dumps({"error_message": parsed_event["message"]}, default=str),
-        }
+        return cors.get_response(
+            body={"error": parsed_event["message"]},
+            status_code=parsed_event["status_code"],
+            headers="*",
+            methods="POST",
+        )
 
     # Further parse event
     model_location = parsed_event["path"]
@@ -84,14 +100,17 @@ def handler(event: dict, context) -> dict:
     username, model_name = model_location.strip("/").split("/")
 
     # Create payload for the execution lambda
-    model_info = get_model_info(username=username, model_name=model_name)
+    model_info, api_keys = get_model_info(username=username, model_name=model_name)
+    print("model_info: ", model_info)
+    print("api_keys: ", api_keys)
     # If model has yet to be uploaded,
     if not model_info["uploaded"]:
-        return {
-            "isBase64Encoded": False,
-            "statusCode": 500,
-            "body": "ML model is mising. Unable to execute model.",
-        }
+        return cors.get_response(
+            body={"error": "ML model is mising. Unable to execute model."},
+            status_code=500,
+            headers="*",
+            methods="POST",
+        )
 
     lambda_payload = json.dumps(
         {
@@ -125,14 +144,9 @@ def handler(event: dict, context) -> dict:
     result = json.loads(response)
 
     # Parse and return result
-    return {
-        "isBase64Encoded": False,
-        "statusCode": status_code,
-        "headers": {
-            "Access-Control-Allow-Origin": "*",  # Required for CORS support to work
-            "Access-Control-Allow-Credentials": True,  # Required for cookies, authorization headers with HTTPS
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
-        "body": json.dumps({"output": result["output"]}, default=str),
-    }
+    return cors.get_response(
+        body={"output": result["output"]},
+        status_code=status_code,
+        headers="*",
+        methods="POST",
+    )

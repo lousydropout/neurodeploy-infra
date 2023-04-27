@@ -33,7 +33,7 @@ def delete_credential(username: str, credential_name) -> list[dict]:
 @validation.check_authorization
 def handler(event: dict, context):
     username = event["username"]
-    credential_name = event["path_params"]["proxy"]
+    credential_name = event["path_params"]["credential_name"]
 
     try:
         response = delete_credential(username, credential_name)

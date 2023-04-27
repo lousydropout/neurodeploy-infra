@@ -47,6 +47,48 @@ _JWT_SECRET_NAME = "jwt_secret"
 _USER_API = "user-api"
 
 
+class RouteResource:
+    def __init__(self, paths: list[str], resource: apigw.IResource):
+        self.routes = {}
+        for path in sorted(paths):
+            nodes = ("root" + path).rstrip("/").split("/")
+            self.add_child(self.routes, nodes, resource)
+
+    def add_child(self, curr: dict, nodes: list[str], resource: apigw.IResource):
+        # base case
+        if not nodes:
+            return
+
+        # special rule for "root"
+        node = "/" if nodes[0] == "root" else nodes[0]
+
+        # recurse
+        if node == "/" and node not in curr:
+            curr[node] = {"_parent": curr, "_resource": resource}
+        if node not in curr:
+            # add resource
+            resource = resource.add_resource(node)
+
+            curr[node] = {"_parent": curr, "_resource": resource}
+        try:
+            self.add_child(curr[node], nodes[1:], curr[node]["_resource"])
+        except Exception as err:
+            print("err: ", err)
+            print("node: ", node)
+            print("self.routes: ", self.routes)
+            raise Exception("Some error", err=err, node=node, routes=self.routes)
+
+    def get(self, route: str) -> apigw.IResource:
+        target = self.routes
+        nodes = ("root" + route).rstrip("/").split("/")
+        while nodes:
+            node = "/" if nodes[0] == "root" else nodes[0]
+            if nodes:
+                nodes = nodes[1:]
+                target = target[node]
+        return target["_resource"]
+
+
 class MainStack(Stack):
     def import_dynamodb_table(self, name: str) -> dynamodb.ITable:
         return dynamodb.Table.from_table_name(self, name, f"{self.prefix}_{name}")
@@ -137,10 +179,9 @@ class MainStack(Stack):
 
     def add(
         self,
-        api: apigw.RestApi,
+        path: str,
         http_method: str,
         resource_name: str,
-        proxy: bool = False,
         filename_overwrite: str = None,
         tables: List[Tuple[dynamodb.Table, Permission]] = None,
         buckets: List[Tuple[s3.Bucket, Permission]] = None,
@@ -148,22 +189,7 @@ class MainStack(Stack):
         layers: List[lambda_.LayerVersion] = None,
         create_queue: bool = False,
     ) -> LambdaQueueTuple:
-        # create resource under self.api.root if it doesn't already exist
-        _resource: apigw.Resource = None
-        if (resource_name, proxy) in self.apigw_resources:
-            _resource = self.apigw_resources[(resource_name, proxy)]
-        # didn't exist
-        if not _resource:
-            if not proxy:
-                _resource = api.root.add_resource(resource_name)
-            else:
-                if (resource_name, False) in self.apigw_resources:
-                    _resource = self.apigw_resources[(resource_name, False)]
-                else:
-                    _resource = api.root.add_resource(resource_name)
-                    self.apigw_resources[(resource_name, False)] = _resource
-                _resource = _resource.add_proxy(any_method=False)
-            self.apigw_resources[(resource_name, proxy)] = _resource
+        resource = self.resources.get(path)
 
         # create lambda
         _id = f"{resource_name}_{http_method}"
@@ -191,7 +217,7 @@ class MainStack(Stack):
             _queue.grant_send_messages(_lambda)
 
         # add method to resource as proxy to _lambda
-        _resource.add_method(http_method, apigw.LambdaIntegration(_lambda))
+        resource.add_method(http_method, apigw.LambdaIntegration(_lambda))
 
         # grant lambda permission to read secret
         for secret_name, secret in secrets or []:
@@ -211,13 +237,27 @@ class MainStack(Stack):
     def create_api_gateway_and_lambdas(
         self,
     ) -> Tuple[apigw.RestApi, Dict[str, LambdaQueueTuple]]:
-        self.apigw_resources: Dict[str, Dict] = {}
+        paths = [
+            "/",
+            "/sign-up",
+            "/sign-in",
+            "/credentials",
+            "/credentials/{credential_name}",
+            "/ml-models",
+            "/ml-models/{model_name}",
+            "/ml-models/{model_name}/api-keys",
+            "/ml-models/{model_name}/api-keys/{api_key}",
+        ]
 
+        # create resources
         api = apigw.RestApi(
             self,
             id=f"{self.prefix}_api",
             endpoint_types=[apigw.EndpointType.REGIONAL],
         )
+        self.resources = RouteResource(paths, api.root)
+
+        # set up custom domain
         domain_name = apigw.DomainName(
             self,
             f"{self.domain_name}_domain_name",
@@ -227,7 +267,7 @@ class MainStack(Stack):
         )
 
         POST_signup = self.add(
-            api,
+            "/sign-up",
             "POST",
             "sign-up",
             filename_overwrite="signup_POST",
@@ -244,14 +284,14 @@ class MainStack(Stack):
             iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
         )
         OPTIONS_signup = self.add(
-            api,
+            "/sign-up",
             "OPTIONS",
             "sign-up",
             filename_overwrite="signup_OPTIONS",
         )
 
         POST_signin = self.add(
-            api,
+            "/sign-in",
             "POST",
             "sign-in",
             filename_overwrite="signin_POST",
@@ -260,7 +300,7 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
         OPTIONS_signin = self.add(
-            api,
+            "/sign-in",
             "OPTIONS",
             "sign-in",
             filename_overwrite="signin_OPTIONS",
@@ -269,20 +309,19 @@ class MainStack(Stack):
         # credentials
         # Note: need read-write permission for GET due to use of PartiQL
         OPTIONS_credentials = self.add(
-            api,
+            "/credentials",
             "OPTIONS",
             "credentials",
             filename_overwrite="credentials_OPTIONS",
         )
         OPTIONS_proxy_credentials = self.add(
-            api,
+            "/credentials/{credential_name}",
             "OPTIONS",
             "credentials",
             filename_overwrite="credentials_proxy_OPTIONS",
-            proxy=True,
         )
         GET_creds = self.add(
-            api,
+            "/credentials",
             "GET",
             "credentials",
             filename_overwrite="credentials_GET",
@@ -292,7 +331,7 @@ class MainStack(Stack):
         )
 
         POST_access_creds = self.add(
-            api,
+            "/credentials",
             "POST",
             "credentials",
             filename_overwrite="credentials_POST",
@@ -302,11 +341,10 @@ class MainStack(Stack):
         )
 
         DELETE_access_creds = self.add(
-            api,
+            "/credentials/{credential_name}",
             "DELETE",
             "credentials",
             filename_overwrite="credentials_DELETE",
-            proxy=True,
             tables=[(self.users, _READ), (self.creds, _READ_WRITE)],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
@@ -314,24 +352,22 @@ class MainStack(Stack):
 
         # ml-models
         OPTIONS_ml_models = self.add(
-            api,
+            "/ml-models",
             "OPTIONS",
             "ml-models",
             filename_overwrite="ml_models_OPTIONS",
         )
         OPTIONS_ml_models_proxy = self.add(
-            api,
+            "/ml-models/{model_name}",
             "OPTIONS",
             "ml-models",
             filename_overwrite="ml_models_proxy_OPTIONS",
-            proxy=True,
         )
         DELETE_ml_models = self.add(
-            api,
+            "/ml-models/{model_name}",
             "DELETE",
             "ml-models",
             filename_overwrite="ml_models_DELETE",
-            proxy=True,
             tables=[
                 (self.users, _READ),
                 (self.creds, _READ),
@@ -347,11 +383,10 @@ class MainStack(Stack):
             )
 
         PUT_ml_models = self.add(
-            api,
+            "/ml-models/{model_name}",
             "PUT",
             "ml-models",
             filename_overwrite="ml_models_PUT",
-            proxy=True,
             tables=[
                 (self.users, _READ),
                 (self.creds, _READ),
@@ -368,11 +403,10 @@ class MainStack(Stack):
         )
 
         POST_ml_models = self.add(
-            api,
+            "/ml-models/{model_name}",
             "POST",
             "ml-models",
             filename_overwrite="ml_models_POST",
-            proxy=True,
             tables=[
                 (self.users, _READ),
                 (self.creds, _READ),
@@ -389,11 +423,10 @@ class MainStack(Stack):
         )
 
         GET_ml_models = self.add(
-            api,
+            "/ml-models/{model_name}",
             "GET",
             "ml-models",
             filename_overwrite="ml_models_GET",
-            proxy=True,
             tables=[
                 (self.users, _READ),
                 (self.creds, _READ),
@@ -406,7 +439,7 @@ class MainStack(Stack):
         )
 
         GET_list_of_ml_models = self.add(
-            api,
+            "/ml-models",
             "GET",
             "ml-models",
             filename_overwrite="ml_models_list_GET",
@@ -418,6 +451,66 @@ class MainStack(Stack):
             ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
+        )
+
+        # apikeys
+        GET_list_of_api_keys = self.add(
+            "/ml-models/{model_name}/api-keys",
+            "GET",
+            "api-keys",
+            filename_overwrite="api_keys_list_GET",
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.usages, _READ),
+                (self.models, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+
+        POST_api_keys = self.add(
+            "/ml-models/{model_name}/api-keys",
+            "POST",
+            "api-keys",
+            filename_overwrite="api_keys_POST",
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.usages, _READ),
+                (self.models, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+
+        DELETE_api_keys = self.add(
+            "/ml-models/{model_name}/api-keys/{api_key}",
+            "DELETE",
+            "api-keys",
+            filename_overwrite="api_keys_DELETE",
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.usages, _READ),
+                (self.models, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+
+        OPTIONS_api_keys_proxy = self.add(
+            "/ml-models/{model_name}/api-keys/{api_key}",
+            "OPTIONS",
+            "api-keys",
+            filename_overwrite="api_keys_proxy_OPTIONS",
+        )
+
+        OPTIONS_api_keys = self.add(
+            "/ml-models/{model_name}/api-keys",
+            "OPTIONS",
+            "api-keys",
+            filename_overwrite="api_keys_OPTIONS",
         )
 
         # DNS records

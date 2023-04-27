@@ -13,13 +13,15 @@ MODELS_TABLE_NAME = f"{_PREFIX}_Models"
 MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
-def get_model_info(username: str, model_name: str) -> dict:
-    statement = f"SELECT sk, library, filetype, created_at, updated_at FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
+def get_api_keys_info(username: str, model_name: str) -> dict:
+    statement = f"SELECT * FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk >= '{model_name}|';"
     response = dynamodb_client.execute_statement(Statement=statement)
-    result = ddb.from_(response.get("Items", [{}])[0])
+    results = [ddb.from_(x) for x in response.get("Items", [])]
 
-    result["model_name"] = result.pop("sk")
-    return result
+    for result in results:
+        _, api_key = result.pop("sk").split("|")
+        result["api_key"] = api_key
+    return results
 
 
 @validation.check_authorization
@@ -30,6 +32,6 @@ def handler(event: dict, context):
 
     return cors.get_response(
         status_code=200,
-        body=get_model_info(username=username, model_name=model_name),
+        body=get_api_keys_info(username=username, model_name=model_name),
         methods="GET",
     )

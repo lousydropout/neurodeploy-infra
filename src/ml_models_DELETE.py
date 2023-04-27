@@ -49,7 +49,7 @@ def delete_model(username: str, model_name: str) -> tuple[bool, str]:
 @validation.check_authorization
 def handler(event: dict, context):
     username = event["username"]
-    model_name = event["path_params"]["proxy"]
+    model_name = event["path_params"]["model_name"]
 
     # Delete resource
     try:
