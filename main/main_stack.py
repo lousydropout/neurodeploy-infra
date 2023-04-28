@@ -109,8 +109,8 @@ class MainStack(Stack):
     def import_lambda_layers(self):
         jwt_layer_arn = {
             "prod": {
-                "us-west-1": "arn:aws:lambda:us-west-1:410585721938:layer:pyjwt:1",
-                "us-east-2": "arn:aws:lambda:us-east-2:410585721938:layer:pyjwt:1",
+                "us-west-1": "arn:aws:lambda:us-west-1:410585721938:layer:pyjwt:2",
+                "us-east-2": "arn:aws:lambda:us-east-2:410585721938:layer:pyjwt:2",
             },
             "dev": {"us-east-1": "arn:aws:lambda:us-east-1:460216766486:layer:pyjwt:1"},
         }
@@ -237,25 +237,28 @@ class MainStack(Stack):
     def create_api_gateway_and_lambdas(
         self,
     ) -> Tuple[apigw.RestApi, Dict[str, LambdaQueueTuple]]:
-        paths = [
-            "/",
-            "/sign-up",
-            "/sign-in",
-            "/credentials",
-            "/credentials/{credential_name}",
-            "/ml-models",
-            "/ml-models/{model_name}",
-            "/ml-models/{model_name}/api-keys",
-            "/ml-models/{model_name}/api-keys/{api_key}",
-        ]
-
         # create resources
         api = apigw.RestApi(
             self,
             id=f"{self.prefix}_api",
             endpoint_types=[apigw.EndpointType.REGIONAL],
         )
-        self.resources = RouteResource(paths, api.root)
+        self.resources = RouteResource(
+            resource=api.root,
+            paths=[
+                "/",
+                "/sign-up",
+                "/sign-in",
+                "/api-keys",
+                "/api-keys/{api_key}",
+                "/credentials",
+                "/credentials/{credential_name}",
+                "/ml-models",
+                "/ml-models/{model_name}",
+                "/ml-models/{model_name}/api-keys",
+                "/ml-models/{model_name}/api-keys/{api_key}",
+            ],
+        )
 
         # set up custom domain
         domain_name = apigw.DomainName(
@@ -266,6 +269,7 @@ class MainStack(Stack):
             domain_name=f"{_USER_API}.{self.domain_name}",
         )
 
+        # sign-up
         POST_signup = self.add(
             "/sign-up",
             "POST",
@@ -290,6 +294,7 @@ class MainStack(Stack):
             filename_overwrite="signup_OPTIONS",
         )
 
+        # sign-in
         POST_signin = self.add(
             "/sign-in",
             "POST",
@@ -304,6 +309,66 @@ class MainStack(Stack):
             "OPTIONS",
             "sign-in",
             filename_overwrite="signin_OPTIONS",
+        )
+
+        # apikeys
+        GET_list_of_api_keys = self.add(
+            "/api-keys",
+            "GET",
+            "api-keys",
+            filename_overwrite="api_keys_list_GET",
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.usages, _READ),
+                (self.models, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+
+        POST_api_keys = self.add(
+            "/api-keys",
+            "POST",
+            "api-keys",
+            filename_overwrite="api_keys_POST",
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.usages, _READ),
+                (self.models, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+
+        DELETE_api_keys = self.add(
+            "/api-keys/{api_key}",
+            "DELETE",
+            "api-keys",
+            filename_overwrite="api_keys_DELETE",
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.usages, _READ),
+                (self.models, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+
+        OPTIONS_api_keys_proxy = self.add(
+            "/api-keys/{api_key}",
+            "OPTIONS",
+            "api-keys",
+            filename_overwrite="api_keys_proxy_OPTIONS",
+        )
+
+        OPTIONS_api_keys = self.add(
+            "/api-keys",
+            "OPTIONS",
+            "api-keys",
+            filename_overwrite="api_keys_OPTIONS",
         )
 
         # credentials
@@ -329,7 +394,6 @@ class MainStack(Stack):
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-
         POST_access_creds = self.add(
             "/credentials",
             "POST",
@@ -339,7 +403,6 @@ class MainStack(Stack):
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )
-
         DELETE_access_creds = self.add(
             "/credentials/{credential_name}",
             "DELETE",
@@ -453,12 +516,12 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
 
-        # apikeys
-        GET_list_of_api_keys = self.add(
+        # ml-models > apikeys
+        GET_list_of_model_api_keys = self.add(
             "/ml-models/{model_name}/api-keys",
             "GET",
             "api-keys",
-            filename_overwrite="api_keys_list_GET",
+            filename_overwrite="model_api_keys_list_GET",
             tables=[
                 (self.users, _READ),
                 (self.creds, _READ),
@@ -469,11 +532,11 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
 
-        POST_api_keys = self.add(
+        POST_model_api_keys = self.add(
             "/ml-models/{model_name}/api-keys",
             "POST",
             "api-keys",
-            filename_overwrite="api_keys_POST",
+            filename_overwrite="model_api_keys_POST",
             tables=[
                 (self.users, _READ),
                 (self.creds, _READ),
@@ -484,11 +547,11 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
 
-        DELETE_api_keys = self.add(
+        DELETE_model_api_keys = self.add(
             "/ml-models/{model_name}/api-keys/{api_key}",
             "DELETE",
             "api-keys",
-            filename_overwrite="api_keys_DELETE",
+            filename_overwrite="model_api_keys_DELETE",
             tables=[
                 (self.users, _READ),
                 (self.creds, _READ),
@@ -499,18 +562,18 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
 
-        OPTIONS_api_keys_proxy = self.add(
+        OPTIONS_model_api_keys_proxy = self.add(
             "/ml-models/{model_name}/api-keys/{api_key}",
             "OPTIONS",
             "api-keys",
-            filename_overwrite="api_keys_proxy_OPTIONS",
+            filename_overwrite="model_api_keys_proxy_OPTIONS",
         )
 
-        OPTIONS_api_keys = self.add(
+        OPTIONS_model_api_keys = self.add(
             "/ml-models/{model_name}/api-keys",
             "OPTIONS",
             "api-keys",
-            filename_overwrite="api_keys_OPTIONS",
+            filename_overwrite="model_api_keys_OPTIONS",
         )
 
         # DNS records
