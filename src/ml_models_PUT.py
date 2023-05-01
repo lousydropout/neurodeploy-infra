@@ -192,13 +192,10 @@ def handler(event: dict, context) -> dict:
     params = {**body, **query_params}  # query params take precedence
     print("params: ", params)
 
-    lib_type = params.get("lib")
-    filetype = params.get("filetype")
-    _is_public = params.get("is_public")
+    lib_type = params["lib"]
+    filetype = params["filetype"]
     is_public = (
-        bool(_is_public)
-        if _is_public and _is_public.lower() in ("true", "false")
-        else False
+        params["is_public"].lower() == "true" if "is_public" in params else False
     )
 
     path_params = event["path_params"]

@@ -1,13 +1,19 @@
 import requests
 
-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InZpbmNlbnQiLCJleHAiOjE2ODI2MTM0NzJ9.VhAE0u5YNFj1VTKZsW0IQKD-odI6y4Cbb03nnzHZ5xA"
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InZpbmNlbnQiLCJleHAiOjE2ODMwNDg1MjF9.M4Z1f94KWO1BzgXEZ5o_kIeQJAWULpw-PoA88Y6BACc"
 model_name = "model1"
 model_type = "tensorflow"
 persistence_type = "h5"
+is_public = False
 
 # Create model
 http_response = requests.put(
-    url=f"https://user-api.playingwithml.com/ml-models/{model_name}?lib={model_type}&filetype={persistence_type}",
+    url=(
+        f"https://user-api.playingwithml.com/ml-models/{model_name}"
+        f"?lib={model_type}"
+        f"&filetype={persistence_type}"
+        f"&is_public={is_public}"
+    ),
     headers={"Authorization": f"Bearer {token}"},
 )
 x = http_response.json()

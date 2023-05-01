@@ -24,11 +24,10 @@ def insert_api_key_record(username: str, model_name: str) -> dict:
         "pk": f"username|{username}",
         "sk": f"{hashed_value}|{model_name}",
         "hashed_key": hashed_value,
+        "model_name": model_name,
         "last8": api_key[-8:],
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
-        "deleted_at": None,
-        "is_deleted": False,
     }
     MODELS_TABLE.put_item(Item=record)
 

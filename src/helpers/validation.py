@@ -112,7 +112,6 @@ def check_authorization(func):
 
     @functools.wraps(f)
     def g(event: dict, context):
-        print(f"Event: {json.dumps(event)}")
         # Parse event
         headers = event.get("headers") or {}
         request_context = event["requestContext"]
@@ -155,7 +154,7 @@ def check_authorization(func):
             "identity": request_context["identity"],
             "request_epoch_time": request_context["requestTimeEpoch"],
         }
-        print(f"Event: {json.dumps(parsed_event)}")
+        print(f"Event (after validation): {json.dumps(parsed_event)}")
 
         return func(parsed_event, context)
 

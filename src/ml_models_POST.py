@@ -91,7 +91,7 @@ def validate_params(
     lib_type: str,
     filetype: str,
     model_name: str,
-) -> list[str]:
+) -> dict:
     errors = []
 
     # confirm that the model has already been created
@@ -133,7 +133,7 @@ def validate_params(
             "Invalid model name: Only alphanumeric characters [A-Za-z0-9], hyphens ('-'), and underscores ('_') are allowed."
         )
 
-    return errors
+    return cors.get_response(status_code=400, body={"errors": errors}, methods="PUT")
 
 
 @validation.check_authorization
@@ -148,18 +148,15 @@ def handler(event: dict, context) -> dict:
 
     lib_type: str = params["lib"]
     filetype: str = params["filetype"]
-    _is_public = params.get("is_public")
     is_public = (
-        bool(_is_public)
-        if _is_public and _is_public.lower() in ("true", "false")
-        else False
+        params["is_public"].lower() == "true" if "is_public" in params else False
     )
 
     path_params = event["path_params"]
     model_name = path_params["model_name"]
 
     # validate params
-    errors = validate_params(
+    error_response = validate_params(
         username=username,
         lib_type=lib_type,
         filetype=filetype,
@@ -167,10 +164,8 @@ def handler(event: dict, context) -> dict:
     )
 
     # return error message if errors
-    if errors:
-        return cors.get_response(
-            status_code=400, body={"errors": errors}, methods="PUT"
-        )
+    if error_response:
+        return error_response
 
     # create record in db
     upsert_ml_model_record(

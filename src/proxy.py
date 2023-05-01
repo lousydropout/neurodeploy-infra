@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Union
 import os
 import json
 from hashlib import sha256
@@ -111,7 +111,7 @@ def raises_error(
     # If model is not public but no api key was provided
     if not model_info["is_public"] and "api-key" not in parsed_event["headers"]:
         return cors.get_response(
-            body={"error": "A valid API key is required for this ML model."},
+            body={"error": "Model is not public but no api key was provided."},
             status_code=403,
             headers="*",
             methods="POST",
@@ -121,6 +121,9 @@ def raises_error(
     api_key = parsed_event["headers"]["api-key"]
     hashed_value = sha256(api_key.encode()).hexdigest()
     if not model_info["is_public"] and hashed_value not in hashed_keys:
+        print("hash of key received: ", hashed_value)
+        print("hashed keys: ", hashed_keys)
+        print("hashed_value in hashed_keys: ", hashed_value in hashed_keys)
         return cors.get_response(
             body={"error": "A valid API key is required for this ML model."},
             status_code=403,
@@ -154,7 +157,7 @@ def main(event: dict) -> dict:
 
     # Create payload for the execution lambda
     model_info, hashed_keys = get_model_info(username=username, model_name=model_name)
-    print("model_info: ", model_info)
+    print("model_info: ", json.dumps(model_info, default=str))
     print("hashed_keys: ", hashed_keys)
 
     # Validate the user has permission (return error response if there is one, else assume everything's fine)
@@ -183,10 +186,10 @@ def main(event: dict) -> dict:
             Payload=lambda_payload,
         )
     except lambda_.exceptions.TooManyRequestsException as err:
-        print(err)
+        print("TooManyRequestsException: ", err)
         status_code, result = 429, {"error": "Too Many Requests"}
     except Exception as err:
-        print(err)
+        print("Exception: ", err)
         status_code, result = 400, {"error": str(err)}
     else:
         status_code = 200
