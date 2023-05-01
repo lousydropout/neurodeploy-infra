@@ -150,7 +150,7 @@ def main(event: dict) -> dict:
         payload = body["payload"] or ""
     print("model_location: ", model_location)
     print("payload: ", payload)
-    username, model_name = model_location.strip("/").split("/")
+    username, model_name = model_location.strip().strip("/").split("/")
 
     # Create payload for the execution lambda
     model_info, hashed_keys = get_model_info(username=username, model_name=model_name)
