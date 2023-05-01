@@ -1,7 +1,8 @@
 import os
 from uuid import uuid4 as uuid
 from datetime import datetime
-from helpers import cors, validation, dynamodb as ddb
+from hashlib import sha256
+from helpers import cors, validation
 import boto3
 
 _PREFIX = os.environ["prefix"]
@@ -15,26 +16,32 @@ MODELS_TABLE_NAME = f"{_PREFIX}_Models"
 MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
-def insert_api_key_record(username: str, model_name: str):
+def insert_api_key_record(username: str, model_name: str) -> dict:
     api_key = str(uuid())
+    hashed_value = sha256(api_key.encode()).hexdigest()
+
     record = {
         "pk": f"username|{username}",
-        "sk": f"{model_name}|{api_key}",
-        "api_key": api_key,
+        "sk": f"{hashed_value}|{model_name}",
+        "hashed_key": hashed_value,
+        "last8": api_key[-8:],
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
+        "deleted_at": None,
+        "is_deleted": False,
     }
     MODELS_TABLE.put_item(Item=record)
+
+    return {"api_key": api_key}
 
 
 @validation.check_authorization
 def handler(event: dict, context):
     username = event["username"]
-    path_params = event["path_params"]
-    model_name = path_params["model_name"]
+    model_name = event["query_params"].get("model_name") or "*"
 
     return cors.get_response(
         status_code=200,
         body=insert_api_key_record(username=username, model_name=model_name),
-        methods="GET",
+        methods="POST",
     )

@@ -1,5 +1,7 @@
+from typing import Tuple, Union
 import os
 import json
+from hashlib import sha256
 from helpers import cors, dynamodb as ddb
 import boto3
 
@@ -20,17 +22,22 @@ MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
 def get_model_info(username: str, model_name: str) -> tuple[dict, set[str]]:
-    statement = f"SELECT * FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk >= '{model_name}' ORDER BY sk;"
+    statement = f"""
+    SELECT * FROM {MODELS_TABLE_NAME}
+    WHERE pk='username|{username}' AND (CONTAINS("sk", '{model_name}') OR CONTAINS("sk", '*'));
+    """
     response = dynamodb_client.execute_statement(Statement=statement)
     results = [ddb.from_(x) for x in response.get("Items", [])]
     print("get_model_info results: ", json.dumps(results, default=str))
     if not results:
         raise Exception(f"Unable to locate model '{model_name}'")
 
-    model_info = results[0]
-    api_keys = set((x["api_key"] for x in results[1:]))
+    model_info = next(result for result in results if result["sk"] == model_name)
+    hashed_keys = set(
+        result["hashed_key"] for result in results if result["sk"] != model_name
+    )
 
-    return model_info, api_keys
+    return model_info, hashed_keys
 
 
 def parse_event(event: dict) -> tuple[bool, dict]:
@@ -78,6 +85,52 @@ def handler(event: dict, context) -> dict:
         )
 
 
+def raises_error(
+    model_info: dict,
+    parsed_event: dict,
+    hashed_keys: set,
+) -> Union[dict, None]:
+    # If model has yet to be uploaded,
+    if not model_info["is_uploaded"]:
+        return cors.get_response(
+            body={"error": "ML model is mising. Unable to execute model."},
+            status_code=500,
+            headers="*",
+            methods="POST",
+        )
+
+    # If the model is marked as "deleted"
+    if model_info["is_deleted"]:
+        return cors.get_response(
+            body={"error": "Cannot execute deleted ML model."},
+            status_code=500,
+            headers="*",
+            methods="POST",
+        )
+
+    # If model is not public but no api key was provided
+    if not model_info["is_public"] and "api-key" not in parsed_event["headers"]:
+        return cors.get_response(
+            body={"error": "A valid API key is required for this ML model."},
+            status_code=403,
+            headers="*",
+            methods="POST",
+        )
+
+    # If model is not public but no api key provided matches
+    api_key = parsed_event["headers"]["api-key"]
+    hashed_value = sha256(api_key.encode()).hexdigest()
+    if not model_info["is_public"] and hashed_value not in hashed_keys:
+        return cors.get_response(
+            body={"error": "A valid API key is required for this ML model."},
+            status_code=403,
+            headers="*",
+            methods="POST",
+        )
+
+    return None
+
+
 def main(event: dict) -> dict:
     print("Event: ", json.dumps(event))
     success, parsed_event = parse_event(event)
@@ -100,17 +153,16 @@ def main(event: dict) -> dict:
     username, model_name = model_location.strip("/").split("/")
 
     # Create payload for the execution lambda
-    model_info, api_keys = get_model_info(username=username, model_name=model_name)
+    model_info, hashed_keys = get_model_info(username=username, model_name=model_name)
     print("model_info: ", model_info)
-    print("api_keys: ", api_keys)
-    # If model has yet to be uploaded,
-    if not model_info["uploaded"]:
-        return cors.get_response(
-            body={"error": "ML model is mising. Unable to execute model."},
-            status_code=500,
-            headers="*",
-            methods="POST",
-        )
+    print("hashed_keys: ", hashed_keys)
+
+    # Validate the user has permission (return error response if there is one, else assume everything's fine)
+    error = raises_error(
+        model_info=model_info, parsed_event=parsed_event, hashed_keys=hashed_keys
+    )
+    if error:
+        return error
 
     lambda_payload = json.dumps(
         {
@@ -132,20 +184,19 @@ def main(event: dict) -> dict:
         )
     except lambda_.exceptions.TooManyRequestsException as err:
         print(err)
-        status_code, result = 429, "Too Many Requests"
+        status_code, result = 429, {"error": "Too Many Requests"}
     except Exception as err:
         print(err)
-        status_code, result = 400, str(err)
+        status_code, result = 400, {"error": str(err)}
     else:
         status_code = 200
         response = lambda_response["Payload"].read().decode()
-
-    print("Result: ", response)
-    result = json.loads(response)
+        print("Result: ", response)
+        result = {"output": json.loads(response)["output"]}
 
     # Parse and return result
     return cors.get_response(
-        body={"output": result["output"]},
+        body=result,
         status_code=status_code,
         headers="*",
         methods="POST",

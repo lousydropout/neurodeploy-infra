@@ -24,8 +24,8 @@ def upsert_ml_model_record(
     model_name: str,
     lib_type: str,
     filetype: str,
-    bucket: str,
-    key: str,
+    bucket: str | None,
+    key: str | None,
     is_public: bool = False,
 ):
     record = {
@@ -36,8 +36,8 @@ def upsert_ml_model_record(
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
         "deleted_at": None,
-        "uploaded": False,
-        "deleted": False,
+        "is_uploaded": False,
+        "is_deleted": False,
         "bucket": bucket,
         "key": key,
         "is_public": is_public,
@@ -146,8 +146,8 @@ def handler(event: dict, context) -> dict:
     params = {**body, **query_params}  # query params take precedence
     print("params: ", params)
 
-    lib_type = params.get("lib")
-    filetype = params.get("filetype")
+    lib_type: str = params["lib"]
+    filetype: str = params["filetype"]
     _is_public = params.get("is_public")
     is_public = (
         bool(_is_public)

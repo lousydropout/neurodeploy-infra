@@ -16,7 +16,6 @@ PREFIX = os.environ["prefix"]
 _REGION: str = os.environ["region_name"]
 _JWT_SECRET_NAME = os.environ["jwt_secret"]
 _SECRETS: dict[str, str] = secrets.get_secret(_JWT_SECRET_NAME, _REGION)
-_USERS_TABLE_NAME = f"{PREFIX}_Users"
 _CREDS_TABLE_NAME = f"{PREFIX}_Creds"
 UTF_8 = "utf-8"
 
@@ -53,26 +52,7 @@ def validate_jwt(encoded_jwt: str) -> Tuple[bool, dict]:
     return valid, payload
 
 
-def validate_credentials(username: str, password: str) -> Tuple[bool, dict]:
-    key = ddb.to_({"pk": username, "sk": "username"})
-    try:
-        item = dynamo.get_item(TableName=_USERS_TABLE_NAME, Key=key)
-    except dynamo.exceptions.ResourceNotFoundException:
-        return False, {}
-
-    # convert DynamoDB format to regular JSON format
-    data = ddb.from_(item["Item"])
-
-    # check if the password's hash matches
-    salt: str = data["salt"]
-    hashed_password = sha256((password + salt).encode(UTF_8)).hexdigest()
-    if data["hashed_password"] != hashed_password:
-        return False, {}
-
-    return True, item
-
-
-def get_creds_record(access_key: str) -> Dict[str, str]:
+def get_creds_record(access_key: str) -> Tuple[bool, Dict[str, str]]:
     try:
         response = dynamo.get_item(
             TableName=_CREDS_TABLE_NAME,
@@ -138,6 +118,7 @@ def check_authorization(func):
         request_context = event["requestContext"]
 
         # Validate header
+        payload = {}
         valid = False
         if "Authorization" in headers:
             auth_header = headers["Authorization"]

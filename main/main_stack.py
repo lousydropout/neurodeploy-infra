@@ -255,8 +255,6 @@ class MainStack(Stack):
                 "/credentials/{credential_name}",
                 "/ml-models",
                 "/ml-models/{model_name}",
-                "/ml-models/{model_name}/api-keys",
-                "/ml-models/{model_name}/api-keys/{api_key}",
             ],
         )
 
@@ -514,66 +512,6 @@ class MainStack(Stack):
             ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
-        )
-
-        # ml-models > apikeys
-        GET_list_of_model_api_keys = self.add(
-            "/ml-models/{model_name}/api-keys",
-            "GET",
-            "api-keys",
-            filename_overwrite="model_api_keys_list_GET",
-            tables=[
-                (self.users, _READ),
-                (self.creds, _READ),
-                (self.usages, _READ),
-                (self.models, _READ_WRITE),
-            ],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-        )
-
-        POST_model_api_keys = self.add(
-            "/ml-models/{model_name}/api-keys",
-            "POST",
-            "api-keys",
-            filename_overwrite="model_api_keys_POST",
-            tables=[
-                (self.users, _READ),
-                (self.creds, _READ),
-                (self.usages, _READ),
-                (self.models, _READ_WRITE),
-            ],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-        )
-
-        DELETE_model_api_keys = self.add(
-            "/ml-models/{model_name}/api-keys/{api_key}",
-            "DELETE",
-            "api-keys",
-            filename_overwrite="model_api_keys_DELETE",
-            tables=[
-                (self.users, _READ),
-                (self.creds, _READ),
-                (self.usages, _READ),
-                (self.models, _READ_WRITE),
-            ],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-        )
-
-        OPTIONS_model_api_keys_proxy = self.add(
-            "/ml-models/{model_name}/api-keys/{api_key}",
-            "OPTIONS",
-            "api-keys",
-            filename_overwrite="model_api_keys_proxy_OPTIONS",
-        )
-
-        OPTIONS_model_api_keys = self.add(
-            "/ml-models/{model_name}/api-keys",
-            "OPTIONS",
-            "api-keys",
-            filename_overwrite="model_api_keys_OPTIONS",
         )
 
         # DNS records

@@ -47,7 +47,7 @@ def parse(event: dict) -> Tuple[dict, dict]:
     return headers, parsed_event
 
 
-def get_user(username: str) -> str:
+def get_user(username: str) -> dict:
     response: dict = dynamodb.get_item(
         TableName=_USERS_TABLE_NAME,
         Key=ddb.to_({"pk": username, "sk": "username"}),
@@ -56,7 +56,7 @@ def get_user(username: str) -> str:
     return ddb.from_(items)
 
 
-def get_error_response(err: Exception) -> dict:
+def get_error_response(err: Exception | str) -> dict:
     return cors.get_response(
         status_code=400,
         body={"error_message": str(err)},
