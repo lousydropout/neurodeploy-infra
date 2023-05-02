@@ -39,6 +39,10 @@ base_stack = BaseStack(
     prefix=_PREFIX,
     regions=_REGIONS,
     env=cdk.Environment(account=_ACCOUNT, region=_REGION_1),
+    tags={
+        "stack": "base",
+        "domain": "playingwithml.com",
+    },
 )
 
 base = {
@@ -48,6 +52,11 @@ base = {
         prefix=_PREFIX,
         region=region,
         env=cdk.Environment(account=_ACCOUNT, region=region),
+        tags={
+            "stack": "regional",
+            "domain": "playingwithml.com",
+            "region": region,
+        },
     )
     for region in _REGIONS
 }
@@ -65,6 +74,11 @@ for region in _REGIONS:
         lambda_image=_BASE_IMAGE,
         env_=env_,
         env=cdk.Environment(account=_ACCOUNT, region=region),
+        tags={
+            "stack": "main",
+            "domain": "playingwithml.com",
+            "region": region,
+        },
     )
 
 app.synth()

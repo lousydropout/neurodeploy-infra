@@ -1,10 +1,11 @@
+from typing import List
+from tagging import add_tags
 from aws_cdk import (
     aws_dynamodb as dynamodb,
     aws_secretsmanager as sm,
     RemovalPolicy,
     Stack,
 )
-from typing import List
 from constructs import Construct
 
 
@@ -84,5 +85,6 @@ class BaseStack(Stack):
                 attribute_name=ttl_atribute,
             ),
         )
+        add_tags(cfn_global_table, {"table": name})
 
         return cfn_global_table

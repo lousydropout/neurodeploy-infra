@@ -1,4 +1,5 @@
 from typing import NamedTuple, Tuple, List, Dict
+from tagging import add_tags
 import aws_cdk as cdk
 from aws_cdk import (
     Duration,
@@ -156,6 +157,7 @@ class MainStack(Stack):
             timeout=Duration.seconds(29),
             layers=layers or [],
         )
+        add_tags(_lambda, {"lambda": id})
 
         # grant lambda function access to DynamoDB tables
         for table, permission in tables or []:
@@ -206,6 +208,9 @@ class MainStack(Stack):
             if create_queue
             else None
         )
+        if _queue:
+            add_tags(_queue, {"queue": resource_name})
+
         _lambda = self.create_lambda(
             _id if not filename_overwrite else filename_overwrite,
             tables=tables,
@@ -227,12 +232,15 @@ class MainStack(Stack):
         return LambdaQueueTuple(_lambda, _queue)
 
     def create_cert_for_domain(self) -> acm.Certificate:
-        return acm.Certificate(
+        cert = acm.Certificate(
             self,
             "Certificate",
             domain_name=f"*.{self.domain_name}",
             validation=acm.CertificateValidation.from_dns(self.hosted_zone),
         )
+        add_tags(cert, {"cert": self.domain_name})
+
+        return cert
 
     def create_api_gateway_and_lambdas(
         self,
@@ -243,6 +251,8 @@ class MainStack(Stack):
             id=f"{self.prefix}_api",
             endpoint_types=[apigw.EndpointType.REGIONAL],
         )
+        add_tags(api, {"api": f"{self.prefix}_api"})
+
         self.resources = RouteResource(
             resource=api.root,
             paths=[
@@ -562,6 +572,7 @@ class MainStack(Stack):
             layers=[],
             reserved_concurrent_executions=2,
         )
+        add_tags(new_user_lambda, {"lambda": "new_user_lambda"})
         self.POST_signup.queue.grant_consume_messages(new_user_lambda)
         self.POST_signup.queue.grant_send_messages(new_user_lambda)
         new_user_lambda.add_event_source(
@@ -644,6 +655,7 @@ class MainStack(Stack):
             memory_size=3008,
             security_groups=[self.sg],
         )
+        add_tags(execution_lambda, {"lambda": "execution"})
         execution_version = execution_lambda.current_version
         execution_alias = lambda_.Alias(
             self,
@@ -671,6 +683,7 @@ class MainStack(Stack):
             },
             security_groups=[self.sg],
         )
+        add_tags(proxy_lambda, {"lambda": "proxy"})
         execution_alias.grant_invoke(proxy_lambda)
         self.models.grant_full_access(proxy_lambda)
 
@@ -709,6 +722,7 @@ class MainStack(Stack):
             deploy=True,
             endpoint_types=[apigw.EndpointType.REGIONAL],
         )
+        add_tags(proxy_api, {"api": "proxy_api"})
         username = proxy_api.root.add_resource("{username}")
         model_name = username.add_resource("{model_name}")
         model_name.add_method("GET")  # GET /{username}/{model_name}
@@ -721,6 +735,7 @@ class MainStack(Stack):
             target=route53.RecordTarget.from_alias(target.ApiGateway(api=proxy_api)),
             record_name=f"api.{self.domain_name}",
         )
+        add_tags(proxy_api, {"route53": self.domain_name})
 
         return execution_alias, LambdaQueueTuple(proxy_lambda, logs_queue)
 
