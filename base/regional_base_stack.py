@@ -1,8 +1,8 @@
+from tagging import add_tags
 from aws_cdk import (
     RemovalPolicy,
     Stack,
     aws_ec2 as ec2,
-    aws_lambda_event_sources as event_sources,
     aws_s3 as s3,
 )
 from constructs import Construct
@@ -30,6 +30,7 @@ class RegionalBaseStack(Stack):
             versioned=True,
             removal_policy=RemovalPolicy.RETAIN,
         )
+        add_tags(self.models_bucket, {"bucket": "models"})
 
         self.logs_bucket = s3.Bucket(
             self,
@@ -41,6 +42,7 @@ class RegionalBaseStack(Stack):
             versioned=True,
             removal_policy=RemovalPolicy.RETAIN,
         )
+        add_tags(self.logs_bucket, {"bucket": "logs"})
 
         # VPC
         self.vpc = ec2.Vpc(
@@ -57,6 +59,7 @@ class RegionalBaseStack(Stack):
                     subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
                 ),
             ],
+            nat_gateways=0,
             gateway_endpoints={
                 "s3": ec2.GatewayVpcEndpointOptions(
                     service=ec2.GatewayVpcEndpointAwsService.S3
