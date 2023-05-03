@@ -13,7 +13,9 @@
 ## Dev deployment
 
 ```bash
-./deploy-dev/base_stack  # deploys the Global dynamodb tables to us-east-1
-./deploy-dev/regional    # deploys VPC to us-east-1
-./deploy-dev/main        # deploys the main stack to us-east-1
+./deploy-dev/base_stack     # deploys the Global dynamodb tables to us-east-1
+./deploy-dev/regional/east  # deploys VPC to us-east-1
+./deploy-dev/regional/west  # deploys VPC to us-west-1
+./deploy-dev/main/east      # deploys the main stack to us-east-1
+./deploy-dev/main/west      # deploys the main stack to us-west-1
 ```
