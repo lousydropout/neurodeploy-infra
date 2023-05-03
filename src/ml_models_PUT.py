@@ -23,7 +23,7 @@ MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 def get_model_info(username: str, model_name: str) -> dict:
     statement = f"SELECT * FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
     response = dynamodb_client.execute_statement(Statement=statement)
-    return ddb.from_(response.get("Items", [{}])[0])
+    return ddb.from_(response["Items"][0])
 
 
 def insert_ml_model_record(
@@ -43,8 +43,8 @@ def insert_ml_model_record(
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
         "deleted_at": None,
-        "uploaded": False,
-        "deleted": False,
+        "is_uploaded": False,
+        "is_deleted": False,
         "bucket": bucket,
         "key": key,
         "is_public": is_public,
@@ -82,7 +82,8 @@ def upsert_ml_model_record(
                 "filetype": filetype,
                 "updated_at": datetime.utcnow().isoformat(),
                 "deleted_at": None,
-                "deleted": False,
+                "is_deleted": False,
+                "is_uploaded": True,
                 "bucket": bucket,
                 "key": key,
                 "is_public": is_public,

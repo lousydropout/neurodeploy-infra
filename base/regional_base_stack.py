@@ -69,3 +69,8 @@ class RegionalBaseStack(Stack):
                 ),
             },
         )
+        self.vpc.add_interface_endpoint(
+            f"{prefix}-lambda-interface-endpoint",
+            service=ec2.InterfaceVpcEndpointAwsService.LAMBDA_,
+            subnets=ec2.SubnetSelection(subnets=self.vpc.private_subnets),
+        )

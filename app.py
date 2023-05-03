@@ -14,22 +14,16 @@ if _ACCOUNT == "410585721938":
     _REGION_1 = "us-west-1"
     _REGION_2 = "us-east-2"
     _REGIONS = [_REGION_1, _REGION_2]
-    ecr = boto3.Session(profile_name="default", region_name=_REGION_1).client("ecr")
 elif _ACCOUNT == "460216766486":
     env_ = "dev"
     DOMAIN_NAME = "playingwithml.com"
     _PREFIX = "playingwithml"
     _REGION_1 = "us-east-1"
-    _REGIONS = [_REGION_1]
-    ecr = boto3.Session(profile_name="dev", region_name=_REGION_1).client("ecr")
+    _REGION_2 = "us-west-1"
+    _REGIONS = [_REGION_1, _REGION_2]
 else:
     raise Exception("Invalid env var: env")
 
-_BASE_IMAGE = next(
-    image["imageDigest"]
-    for image in ecr.list_images(repositoryName="lambda_runtime")["imageIds"]
-    if image.get("imageTag", "") == "latest"
-)
 
 app = cdk.App()
 
@@ -69,9 +63,9 @@ for region in _REGIONS:
         domain_name=DOMAIN_NAME,
         account_number=_ACCOUNT,
         region_name=region,
+        other_regions=[x for x in _REGIONS if x != region],
         buckets={"models_bucket": base[f"RegionalBase-{region}"].models_bucket},
         vpc=base[f"RegionalBase-{region}"].vpc,
-        lambda_image=_BASE_IMAGE,
         env_=env_,
         env=cdk.Environment(account=_ACCOUNT, region=region),
         tags={

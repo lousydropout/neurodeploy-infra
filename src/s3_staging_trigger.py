@@ -39,7 +39,7 @@ def upsert_ml_model_record(
     record.update(
         {
             "updated_at": datetime.utcnow().isoformat(),
-            "uploaded": True,
+            "is_uploaded": True,
             "bucket": bucket,
             "key": key,
         }

@@ -35,5 +35,13 @@
   "hosted-zone:account=460216766486:domainName=playingwithml.com:region=us-east-1": {
     "Id": "/hostedzone/Z04735092FMDRWTTEX5EW",
     "Name": "playingwithml.com."
+  },
+  "availability-zones:account=460216766486:region=us-west-1": [
+    "us-west-1a",
+    "us-west-1b"
+  ],
+  "hosted-zone:account=460216766486:domainName=playingwithml.com:region=us-west-1": {
+    "Id": "/hostedzone/Z04735092FMDRWTTEX5EW",
+    "Name": "playingwithml.com."
   }
 }

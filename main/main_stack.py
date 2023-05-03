@@ -14,13 +14,15 @@ from aws_cdk import (
     aws_lambda as lambda_,
     aws_lambda_event_sources as event_sources,
     aws_route53 as route53,
-    aws_route53_targets as target,
     aws_s3 as s3,
     aws_secretsmanager as sm,
+    aws_sns as sns,
+    aws_sns_subscriptions as sns_subs,
     aws_sqs as sqs,
 )
 from constructs import Construct
 from enum import Enum
+import boto3
 
 
 class LambdaQueueTuple(NamedTuple):
@@ -43,6 +45,7 @@ _SQS_FULL_PERMISSION_POLICY = "AmazonSQSFullAccess"
 _ROUTE_53_FULL_PERMISSION_POLICY = "AmazonRoute53FullAccess"
 _APIGW_FULL_PERMISSION_POLICY = "AmazonAPIGatewayAdministrator"
 _IAM_FULL_PERMISSION_POLICY = "IAMFullAccess"
+_SNS_FULL_PERMISSION_POLICY = "AmazonSNSFullAccess"
 
 _JWT_SECRET_NAME = "jwt_secret"
 _USER_API = "user-api"
@@ -113,7 +116,10 @@ class MainStack(Stack):
                 "us-west-1": "arn:aws:lambda:us-west-1:410585721938:layer:pyjwt:2",
                 "us-east-2": "arn:aws:lambda:us-east-2:410585721938:layer:pyjwt:2",
             },
-            "dev": {"us-east-1": "arn:aws:lambda:us-east-1:460216766486:layer:pyjwt:1"},
+            "dev": {
+                "us-east-1": "arn:aws:lambda:us-east-1:460216766486:layer:pyjwt:1",
+                "us-west-1": "arn:aws:lambda:us-west-1:460216766486:layer:pyjwt:1",
+            },
         }
 
         self.py_jwt_layer = lambda_.LayerVersion.from_layer_version_arn(
@@ -538,7 +544,7 @@ class MainStack(Stack):
             type="A",
             alias_target=target,
             hosted_zone_id=self.hosted_zone.hosted_zone_id,
-            weight=100,
+            region=self.region_name,
             set_identifier=f"user-{cdk.Aws.STACK_NAME}",
         )
 
@@ -714,11 +720,6 @@ class MainStack(Stack):
             "proxy_api",
             handler=proxy_lambda,
             proxy=False,
-            domain_name=apigw.DomainNameOptions(
-                certificate=self.main_cert,
-                domain_name=f"api.{self.domain_name}",
-                endpoint_type=apigw.EndpointType.REGIONAL,
-            ),
             deploy=True,
             endpoint_types=[apigw.EndpointType.REGIONAL],
         )
@@ -728,12 +729,31 @@ class MainStack(Stack):
         model_name.add_method("GET")  # GET /{username}/{model_name}
         model_name.add_method("POST")  # POST /{username}/{model_name}
 
-        route53.ARecord(
+        # Domain name
+        domain_name = apigw.DomainName(
             self,
-            "proxy-api-a-record",
-            zone=self.hosted_zone,
-            target=route53.RecordTarget.from_alias(target.ApiGateway(api=proxy_api)),
-            record_name=f"api.{self.domain_name}",
+            f"{self.domain_name}_api_domain_name",
+            mapping=proxy_api,
+            certificate=self.main_cert,
+            domain_name=f"api.{self.domain_name}",
+        )
+
+        # DNS records
+        target = route53.CfnRecordSet.AliasTargetProperty(
+            dns_name=domain_name.domain_name_alias_domain_name,
+            hosted_zone_id=domain_name.domain_name_alias_hosted_zone_id,
+            evaluate_target_health=False,
+        )
+
+        self.api_record = route53.CfnRecordSet(
+            self,
+            "ProxyApiARecord",
+            name=f"api.{self.domain_name}",
+            type="A",
+            alias_target=target,
+            hosted_zone_id=self.hosted_zone.hosted_zone_id,
+            region=self.region_name,
+            set_identifier=f"user-{cdk.Aws.STACK_NAME}",
         )
         add_tags(proxy_api, {"route53": self.domain_name})
 
@@ -753,12 +773,12 @@ class MainStack(Stack):
         )
         return sg
 
-    def create_s3_staging_trigger(self):
+    def create_s3_staging_trigger(self) -> lambda_.Function:
         # create lambda and have it triggered by
         # s3 bucket: self.staging_bucket
         # moving the file over to s3 bucket self.models_bucket
         # and log stuff in the dynamodb table self.models
-        self.staging_trigger = lambda_.Function(
+        staging_trigger = lambda_.Function(
             self,
             "staging_trigger",
             function_name=f"{self.prefix}-staging-trigger",
@@ -770,11 +790,13 @@ class MainStack(Stack):
             },
             timeout=Duration.seconds(29),
         )
-        self.staging_bucket.grant_read_write(self.staging_trigger)
-        self.models_bucket.grant_read_write(self.staging_trigger)
-        self.models.grant_full_access(self.staging_trigger)
+        self.staging_bucket.grant_read_write(staging_trigger)
+        self.models_bucket.grant_read_write(staging_trigger)
+        self.models.grant_full_access(staging_trigger)
 
-        self.staging_trigger.add_event_source(self.staging_s3_trigger)
+        staging_trigger.add_event_source(self.staging_s3_trigger)
+
+        return staging_trigger
 
     def create_staging_bucket(self):
         self.staging_bucket = s3.Bucket(
@@ -799,10 +821,10 @@ class MainStack(Stack):
         prefix: str,
         domain_name: str,
         region_name: str,
+        other_regions: List[str],
         account_number: str,
         buckets: Dict[str, s3.Bucket],
         vpc: ec2.Vpc,
-        lambda_image: str,
         env_: str,
         **kwargs,
     ) -> None:
@@ -823,8 +845,6 @@ class MainStack(Stack):
             subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
         )
 
-        self.lambda_image_digest = lambda_image
-
         # Imports
         self.import_secrets()
         self.import_lambda_layers()
@@ -833,6 +853,17 @@ class MainStack(Stack):
         # DNS
         self.hosted_zone = self.import_hosted_zone()
         self.main_cert = self.create_cert_for_domain()
+
+        # ECR
+        ecr = boto3.Session(
+            profile_name=self.env_ if self.env_ == "dev" else "default",
+            region_name=self.region_name,
+        ).client("ecr")
+        self.lambda_image_digest = next(
+            image["imageDigest"]
+            for image in ecr.list_images(repositoryName="lambda_runtime")["imageIds"]
+            if image.get("imageTag", "") == "latest"
+        )
 
         # security group for proxy lambda & execution lambda
         self.sg = self.create_security_group()
@@ -855,4 +886,32 @@ class MainStack(Stack):
         self.delete_user_lambda = self.create_delete_user_lambda()
 
         # Trigger lambda when new file is uploaded to staging bucket
-        self.create_s3_staging_trigger()
+        self.staging_trigger = self.create_s3_staging_trigger()
+
+        # SNS + SQS and add SQS queue as event source for lambda
+        self.regional_topic = sns.Topic(
+            self,
+            "container",
+            display_name="container_display",
+            topic_name="container_topic",
+        )
+        self.regional_queue = sqs.Queue(
+            self,
+            "regional_queue",
+            visibility_timeout=Duration.minutes(15),
+            retention_period=Duration.hours(12),
+        )
+        self.regional_topic.add_subscription(
+            sns_subs.SqsSubscription(self.regional_queue)
+        )
+        self.staging_trigger.add_event_source(
+            event_sources.SqsEventSource(self.regional_queue)
+        )
+        self.staging_trigger.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(_SNS_FULL_PERMISSION_POLICY)
+        )
+        # record arn of other regions' SNS topic as enviornment variable
+        self.staging_trigger.add_environment("topic_arn", self.regional_topic.topic_arn)
+        self.staging_trigger.add_environment("region_0", self.region_name)
+        for k, region in enumerate(other_regions):
+            self.staging_trigger.add_environment(f"region_{k+1}", region)

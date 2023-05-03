@@ -99,7 +99,7 @@ def raises_error(
             methods="POST",
         )
 
-    # If the model is marked as "deleted"
+    # If the model is marked as "is_deleted"
     if model_info["is_deleted"]:
         return cors.get_response(
             body={"error": "Cannot execute deleted ML model."},

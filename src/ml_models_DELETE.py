@@ -35,7 +35,7 @@ def delete_model(username: str, model_name: str) -> tuple[bool, str]:
 
     record.update(
         {
-            "deleted": True,
+            "is_deleted": True,
             "deleted_at": datetime.utcnow().isoformat(),
         }
     )
