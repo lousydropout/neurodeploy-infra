@@ -43,5 +43,25 @@
   "hosted-zone:account=460216766486:domainName=playingwithml.com:region=us-west-1": {
     "Id": "/hostedzone/Z04735092FMDRWTTEX5EW",
     "Name": "playingwithml.com."
+  },
+  "availability-zones:account=410585721938:region=us-east-1": [
+    "us-east-1a",
+    "us-east-1b",
+    "us-east-1c",
+    "us-east-1d",
+    "us-east-1e",
+    "us-east-1f"
+  ],
+  "hosted-zone:account=410585721938:domainName=neurodeploy.com:region=us-east-1": {
+    "Id": "/hostedzone/Z01789541B60A8PPE48EC",
+    "Name": "neurodeploy.com."
+  },
+  "hosted-zone:account=460216766486:domainName=neurodeploy.com:region=us-west-1": {
+    "Id": "/hostedzone/Z0447146OKDPC52YUDNU",
+    "Name": "neurodeploy.com."
+  },
+  "hosted-zone:account=460216766486:domainName=neurodeploy.com:region=us-east-1": {
+    "Id": "/hostedzone/Z0447146OKDPC52YUDNU",
+    "Name": "neurodeploy.com."
   }
 }

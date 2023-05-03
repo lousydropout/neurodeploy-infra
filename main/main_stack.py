@@ -113,8 +113,8 @@ class MainStack(Stack):
     def import_lambda_layers(self):
         jwt_layer_arn = {
             "prod": {
-                "us-west-1": "arn:aws:lambda:us-west-1:410585721938:layer:pyjwt:2",
-                "us-east-2": "arn:aws:lambda:us-east-2:410585721938:layer:pyjwt:2",
+                "us-east-1": "arn:aws:lambda:us-east-1:460216766486:layer:pyjwt:1",
+                "us-west-1": "arn:aws:lambda:us-west-1:460216766486:layer:pyjwt:1",
             },
             "dev": {
                 "us-east-1": "arn:aws:lambda:us-east-1:460216766486:layer:pyjwt:1",
@@ -274,14 +274,15 @@ class MainStack(Stack):
             ],
         )
 
-        # set up custom domain
-        domain_name = apigw.DomainName(
-            self,
-            f"{self.domain_name}_domain_name",
-            mapping=api,
-            certificate=self.main_cert,
-            domain_name=f"{_USER_API}.{self.domain_name}",
-        )
+        if self.env_ == "dev":
+            # set up custom domain
+            domain_name = apigw.DomainName(
+                self,
+                f"{self.domain_name}_domain_name",
+                mapping=api,
+                certificate=self.main_cert,
+                domain_name=f"{_USER_API}.{self.domain_name}",
+            )
 
         # sign-up
         POST_signup = self.add(
@@ -530,23 +531,24 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
 
-        # DNS records
-        target = route53.CfnRecordSet.AliasTargetProperty(
-            dns_name=domain_name.domain_name_alias_domain_name,
-            hosted_zone_id=domain_name.domain_name_alias_hosted_zone_id,
-            evaluate_target_health=False,
-        )
+        if self.env_ == "dev":
+            # DNS records
+            target = route53.CfnRecordSet.AliasTargetProperty(
+                dns_name=domain_name.domain_name_alias_domain_name,
+                hosted_zone_id=domain_name.domain_name_alias_hosted_zone_id,
+                evaluate_target_health=False,
+            )
 
-        self.api_record = route53.CfnRecordSet(
-            self,
-            "UserApiARecord",
-            name=f"{_USER_API}.{self.domain_name}",
-            type="A",
-            alias_target=target,
-            hosted_zone_id=self.hosted_zone.hosted_zone_id,
-            region=self.region_name,
-            set_identifier=f"user-{cdk.Aws.STACK_NAME}",
-        )
+            self.api_record = route53.CfnRecordSet(
+                self,
+                "UserApiARecord",
+                name=f"{_USER_API}.{self.domain_name}",
+                type="A",
+                alias_target=target,
+                hosted_zone_id=self.hosted_zone.hosted_zone_id,
+                region=self.region_name,
+                set_identifier=f"user-{cdk.Aws.STACK_NAME}",
+            )
 
         return (
             api,
@@ -645,7 +647,9 @@ class MainStack(Stack):
             function_name=f"{self.prefix}_execution",
             code=lambda_.DockerImageCode.from_ecr(
                 repository=ecr.Repository.from_repository_name(
-                    self, "lambda_runtime_ecr", "lambda_runtime"
+                    self,
+                    "lambda_runtime_ecr",
+                    "lambda_runtime" if self.env_ == "dev" else "neuro",
                 ),
                 tag_or_digest=self.lambda_image_digest,
             ),
@@ -729,33 +733,34 @@ class MainStack(Stack):
         model_name.add_method("GET")  # GET /{username}/{model_name}
         model_name.add_method("POST")  # POST /{username}/{model_name}
 
-        # Domain name
-        domain_name = apigw.DomainName(
-            self,
-            f"{self.domain_name}_api_domain_name",
-            mapping=proxy_api,
-            certificate=self.main_cert,
-            domain_name=f"api.{self.domain_name}",
-        )
+        if self.env_ == "dev":
+            # Domain name
+            domain_name = apigw.DomainName(
+                self,
+                f"{self.domain_name}_api_domain_name",
+                mapping=proxy_api,
+                certificate=self.main_cert,
+                domain_name=f"api.{self.domain_name}",
+            )
 
-        # DNS records
-        target = route53.CfnRecordSet.AliasTargetProperty(
-            dns_name=domain_name.domain_name_alias_domain_name,
-            hosted_zone_id=domain_name.domain_name_alias_hosted_zone_id,
-            evaluate_target_health=False,
-        )
+            # DNS records
+            target = route53.CfnRecordSet.AliasTargetProperty(
+                dns_name=domain_name.domain_name_alias_domain_name,
+                hosted_zone_id=domain_name.domain_name_alias_hosted_zone_id,
+                evaluate_target_health=False,
+            )
 
-        self.api_record = route53.CfnRecordSet(
-            self,
-            "ProxyApiARecord",
-            name=f"api.{self.domain_name}",
-            type="A",
-            alias_target=target,
-            hosted_zone_id=self.hosted_zone.hosted_zone_id,
-            region=self.region_name,
-            set_identifier=f"user-{cdk.Aws.STACK_NAME}",
-        )
-        add_tags(proxy_api, {"route53": self.domain_name})
+            self.api_record = route53.CfnRecordSet(
+                self,
+                "ProxyApiARecord",
+                name=f"api.{self.domain_name}",
+                type="A",
+                alias_target=target,
+                hosted_zone_id=self.hosted_zone.hosted_zone_id,
+                region=self.region_name,
+                set_identifier=f"user-{cdk.Aws.STACK_NAME}",
+            )
+            add_tags(proxy_api, {"route53": self.domain_name})
 
         return execution_alias, LambdaQueueTuple(proxy_lambda, logs_queue)
 
@@ -855,13 +860,14 @@ class MainStack(Stack):
         self.main_cert = self.create_cert_for_domain()
 
         # ECR
+        repo_name = "lambda_runtime" if self.env_ == "dev" else "neuro"
         ecr = boto3.Session(
-            profile_name=self.env_ if self.env_ == "dev" else "default",
+            profile_name="dev",
             region_name=self.region_name,
         ).client("ecr")
         self.lambda_image_digest = next(
             image["imageDigest"]
-            for image in ecr.list_images(repositoryName="lambda_runtime")["imageIds"]
+            for image in ecr.list_images(repositoryName=repo_name)["imageIds"]
             if image.get("imageTag", "") == "latest"
         )
 
@@ -892,8 +898,8 @@ class MainStack(Stack):
         self.regional_topic = sns.Topic(
             self,
             "container",
-            display_name="container_display",
-            topic_name="container_topic",
+            display_name=f"{prefix}_container_display",
+            topic_name=f"{prefix}_container_topic",
         )
         self.regional_queue = sqs.Queue(
             self,

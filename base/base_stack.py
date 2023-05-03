@@ -33,8 +33,8 @@ class BaseStack(Stack):
         # Secrets
         self.jwt_secret = sm.Secret(
             self,
-            "jwt_secret",
-            secret_name="jwt_secret",
+            f"{self.prefix}_jwt_secret",
+            secret_name=f"{self.prefix}_jwt_secret",
             replica_regions=self.replica_regions,
             removal_policy=RemovalPolicy.RETAIN,
         )

@@ -4,18 +4,16 @@ import aws_cdk as cdk
 from main.main_stack import MainStack
 from base.base_stack import BaseStack
 from base.regional_base_stack import RegionalBaseStack
-import boto3
 
+env_ = os.environ["ENV"]
 _ACCOUNT = os.getenv("CDK_DEFAULT_ACCOUNT")
-if _ACCOUNT == "410585721938":
-    env_ = "prod"
+if env_ == "prod":
     DOMAIN_NAME = "neurodeploy.com"
-    _PREFIX = "neurodeploy"
+    _PREFIX = "neuro"
     _REGION_1 = "us-west-1"
-    _REGION_2 = "us-east-2"
+    _REGION_2 = "us-east-1"
     _REGIONS = [_REGION_1, _REGION_2]
-elif _ACCOUNT == "460216766486":
-    env_ = "dev"
+elif env_ == "dev":
     DOMAIN_NAME = "playingwithml.com"
     _PREFIX = "playingwithml"
     _REGION_1 = "us-east-1"
@@ -35,7 +33,7 @@ base_stack = BaseStack(
     env=cdk.Environment(account=_ACCOUNT, region=_REGION_1),
     tags={
         "stack": "base",
-        "domain": "playingwithml.com",
+        "domain": DOMAIN_NAME,
     },
 )
 
@@ -48,7 +46,7 @@ base = {
         env=cdk.Environment(account=_ACCOUNT, region=region),
         tags={
             "stack": "regional",
-            "domain": "playingwithml.com",
+            "domain": DOMAIN_NAME,
             "region": region,
         },
     )
@@ -70,7 +68,7 @@ for region in _REGIONS:
         env=cdk.Environment(account=_ACCOUNT, region=region),
         tags={
             "stack": "main",
-            "domain": "playingwithml.com",
+            "domain": DOMAIN_NAME,
             "region": region,
         },
     )
