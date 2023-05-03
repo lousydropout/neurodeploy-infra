@@ -29,7 +29,7 @@ app = cdk.App()
 
 base_stack = BaseStack(
     app,
-    "BaseStack",
+    "BaseStack" if env_ == "dev" else "BaseStack-prod",
     prefix=_PREFIX,
     regions=_REGIONS,
     env=cdk.Environment(account=_ACCOUNT, region=_REGION_1),
@@ -42,7 +42,7 @@ base_stack = BaseStack(
 base = {
     f"RegionalBase-{region}": RegionalBaseStack(
         app,
-        f"RegionalBase-{region}",
+        f"RegionalBase-{region}" if env_ == "dev" else f"RegionalBase-{region}-prod",
         prefix=_PREFIX,
         region=region,
         env=cdk.Environment(account=_ACCOUNT, region=region),
@@ -58,7 +58,7 @@ base = {
 for region in _REGIONS:
     MainStack(
         app,
-        f"MainStack-{region}",
+        f"MainStack-{region}" if env_ == "dev" else f"MainStack-{region}-prod",
         prefix=_PREFIX,
         domain_name=DOMAIN_NAME,
         account_number=_ACCOUNT,
