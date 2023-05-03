@@ -1,5 +1,6 @@
 import os
 import json
+from uuid import UUID
 from hashlib import sha256
 from helpers import cors, dynamodb as ddb, validation
 import boto3
@@ -52,14 +53,22 @@ def delete_api_key(username: str, api_key: str, is_hashed: bool) -> dict:
     )
 
 
+def is_hashed(x: str) -> bool:
+    try:
+        UUID(x)
+    except:
+        return False
+    else:
+        return True
+
+
 @validation.check_authorization
 def handler(event: dict, context):
     username = event["username"]
     api_key = event["path_params"]["api_key"]
-    is_hashed = event["query_params"].get("is_hashed") or False
 
     return delete_api_key(
         username=username,
         api_key=api_key,
-        is_hashed=is_hashed,
+        is_hashed=is_hashed(api_key),
     )
