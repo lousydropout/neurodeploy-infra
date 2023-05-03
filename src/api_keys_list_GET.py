@@ -14,24 +14,27 @@ def get_api_keys_info(username: str, model_name: str) -> dict:
     response = dynamodb_client.execute_statement(Statement=statement)
     results = [ddb.from_(x) for x in response.get("Items", [])]
 
-    return {
-        "api_keys": [
-            {
-                "last8": result["last8"],
-                "created_at": result["created_at"],
-                "hashed_key": result["hashed_key"],
-                "model_name": result["model_name"],
-                "description": result.get("description") or "",
-            }
-            for result in results
-        ]
-    }
+    keys = [
+        {
+            "last8": result["last8"],
+            "created_at": result["created_at"],
+            "hashed_key": result["hashed_key"],
+            "model_name": result["model_name"],
+            "description": result.get("description") or "",
+        }
+        for result in results
+        if (result["model_name"] == model_name if model_name else True)
+    ]
+
+    return {"api_keys": keys}
 
 
 @validation.check_authorization
 def handler(event: dict, context):
     username = event["username"]
-    model_name = event["query_params"].get("model_name") or "*"
+    model_name = event["query_params"].get("model_name")
+    if model_name == "*":
+        model_name = None
 
     return cors.get_response(
         status_code=200,
