@@ -16,13 +16,14 @@ MODELS_TABLE_NAME = f"{_PREFIX}_Models"
 MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
-def insert_api_key_record(username: str, model_name: str) -> dict:
+def insert_api_key_record(username: str, model_name: str, description: str) -> dict:
     api_key = str(uuid())
     hashed_value = sha256(api_key.encode()).hexdigest()
 
     record = {
         "pk": f"username|{username}",
         "sk": f"{hashed_value}|{model_name}",
+        "description": description,
         "hashed_key": hashed_value,
         "model_name": model_name,
         "last8": api_key[-8:],
@@ -38,9 +39,12 @@ def insert_api_key_record(username: str, model_name: str) -> dict:
 def handler(event: dict, context):
     username = event["username"]
     model_name = event["query_params"].get("model_name") or "*"
+    description = event["query_params"].get("description") or ""
 
     return cors.get_response(
         status_code=200,
-        body=insert_api_key_record(username=username, model_name=model_name),
+        body=insert_api_key_record(
+            username=username, model_name=model_name, description=description
+        ),
         methods="POST",
     )

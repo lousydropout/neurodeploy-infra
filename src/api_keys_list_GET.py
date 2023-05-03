@@ -21,6 +21,7 @@ def get_api_keys_info(username: str, model_name: str) -> dict:
                 "created_at": result["created_at"],
                 "hashed_key": result["hashed_key"],
                 "model_name": result["model_name"],
+                "description": result.get("description") or "",
             }
             for result in results
         ]
