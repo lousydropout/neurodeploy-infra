@@ -17,12 +17,14 @@ def get_sk(username: str, hashed_value: str) -> str:
     statement = f"SELECT sk FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND BEGINS_WITH(sk, '{hashed_value}');"
     response = dynamodb_client.execute_statement(Statement=statement)
     results = [ddb.from_(x) for x in response.get("Items", [])]
+    logger.debug("get_sk results: %s", json.dumps(results, default=str))
 
     return next(result["sk"] for result in results)
 
 
 def delete_api_key(username: str, api_key: str, is_hashed: bool) -> dict:
     hashed_value = api_key if is_hashed else sha256(api_key.encode()).hexdigest()
+    logger.debug("hashed_value: %s", hashed_value)
 
     # get the sort key (sk = f'{hashed_value}|{model_name}')
     try:
@@ -57,9 +59,10 @@ def delete_api_key(username: str, api_key: str, is_hashed: bool) -> dict:
 def is_hashed(x: str) -> bool:
     try:
         UUID(x)
-    except:
+        logger.debug("%s is not hashed", x)
         return False
-    else:
+    except:
+        logger.debug("%s is hashed", x)
         return True
 
 
