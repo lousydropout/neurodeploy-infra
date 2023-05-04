@@ -112,7 +112,7 @@ def handler(event: dict, context):
         username=headers["username"],
         model_name="*",
         description="for temporary purposes",
-        expiration=60 * 24,  # minutes
+        expires_after=60 * 24,  # minutes
     )
 
     # 6. Return jwt
