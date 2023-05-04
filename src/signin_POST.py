@@ -118,6 +118,6 @@ def handler(event: dict, context):
     # 6. Return jwt
     return cors.get_response(
         status_code=200,
-        body={"token": token, "expiration": exp.isoformat(), "api-key": api_key},
+        body={"token": token, "expiration": exp.isoformat(), **api_key},
         methods="POST",
     )
