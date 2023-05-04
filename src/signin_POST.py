@@ -6,6 +6,7 @@ import boto3
 from helpers import cors, dynamodb as ddb, validation
 from helpers.decimal_encoder import DecimalEncoder
 from helpers.logging import logger
+from api_keys_POST import insert_api_key_record
 
 PREFIX = os.environ["prefix"]
 
@@ -106,9 +107,17 @@ def handler(event: dict, context):
     token, exp = validation.create_api_token(username=headers["username"])
     print("done")
 
-    # 5. Return jwt
+    # 5. Create quickly expiring api key
+    api_key = insert_api_key_record(
+        username=headers["username"],
+        model_name="*",
+        description="for temporary purposes",
+        expiration=60 * 24,  # minutes
+    )
+
+    # 6. Return jwt
     return cors.get_response(
         status_code=200,
-        body={"token": token, "expiration": exp.isoformat()},
+        body={"token": token, "expiration": exp.isoformat(), "api-key": api_key},
         methods="POST",
     )

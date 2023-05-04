@@ -315,7 +315,11 @@ class MainStack(Stack):
             "POST",
             "sign-in",
             filename_overwrite="signin_POST",
-            tables=[(self.users, _READ), (self.creds, _READ_WRITE)],
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ_WRITE),
+                (self.models, _READ_WRITE),
+            ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
         )

@@ -19,7 +19,10 @@ MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
 def insert_api_key_record(
-    username: str, model_name: str, description: str, expiration
+    username: str,
+    model_name: str,
+    description: str,
+    expiration: int,
 ) -> dict:
     api_key = str(uuid())
     hashed_value = sha256(api_key.encode()).hexdigest()
@@ -37,7 +40,7 @@ def insert_api_key_record(
     # set expiration
     exp = None
     if expiration:
-        exp = datetime.utcnow() + timedelta(minutes=exp)
+        exp = datetime.utcnow() + timedelta(minutes=expiration)
         record.update(
             {
                 "ttl": int(time.mktime(exp.timetuple())),
@@ -66,7 +69,7 @@ def handler(event: dict, context):
     expiration: str = get_param("expiration", event)
     if expiration.isdecimal():
         expiration = int(expiration)
-    else
+    else:
         expiration = None
 
     return cors.get_response(
