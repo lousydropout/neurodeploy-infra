@@ -274,15 +274,14 @@ class MainStack(Stack):
             ],
         )
 
-        if self.env_ == "dev":
-            # set up custom domain
-            domain_name = apigw.DomainName(
-                self,
-                f"{self.domain_name}_domain_name",
-                mapping=api,
-                certificate=self.main_cert,
-                domain_name=f"{_USER_API}.{self.domain_name}",
-            )
+        # set up custom domain
+        domain_name = apigw.DomainName(
+            self,
+            f"{self.domain_name}_domain_name",
+            mapping=api,
+            certificate=self.main_cert,
+            domain_name=f"{_USER_API}.{self.domain_name}",
+        )
 
         # sign-up
         POST_signup = self.add(
@@ -535,24 +534,23 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
 
-        if self.env_ == "dev":
-            # DNS records
-            target = route53.CfnRecordSet.AliasTargetProperty(
-                dns_name=domain_name.domain_name_alias_domain_name,
-                hosted_zone_id=domain_name.domain_name_alias_hosted_zone_id,
-                evaluate_target_health=False,
-            )
+        # DNS records
+        target = route53.CfnRecordSet.AliasTargetProperty(
+            dns_name=domain_name.domain_name_alias_domain_name,
+            hosted_zone_id=domain_name.domain_name_alias_hosted_zone_id,
+            evaluate_target_health=False,
+        )
 
-            self.api_record = route53.CfnRecordSet(
-                self,
-                "UserApiARecord",
-                name=f"{_USER_API}.{self.domain_name}",
-                type="A",
-                alias_target=target,
-                hosted_zone_id=self.hosted_zone.hosted_zone_id,
-                region=self.region_name,
-                set_identifier=f"user-{cdk.Aws.STACK_NAME}",
-            )
+        self.api_record = route53.CfnRecordSet(
+            self,
+            "UserApiARecord",
+            name=f"{_USER_API}.{self.domain_name}",
+            type="A",
+            alias_target=target,
+            hosted_zone_id=self.hosted_zone.hosted_zone_id,
+            region=self.region_name,
+            set_identifier=f"user-{cdk.Aws.STACK_NAME}",
+        )
 
         return (
             api,
@@ -737,34 +735,33 @@ class MainStack(Stack):
         model_name.add_method("GET")  # GET /{username}/{model_name}
         model_name.add_method("POST")  # POST /{username}/{model_name}
 
-        if self.env_ == "dev":
-            # Domain name
-            domain_name = apigw.DomainName(
-                self,
-                f"{self.domain_name}_api_domain_name",
-                mapping=proxy_api,
-                certificate=self.main_cert,
-                domain_name=f"api.{self.domain_name}",
-            )
+        # Domain name
+        domain_name = apigw.DomainName(
+            self,
+            f"{self.domain_name}_api_domain_name",
+            mapping=proxy_api,
+            certificate=self.main_cert,
+            domain_name=f"api.{self.domain_name}",
+        )
 
-            # DNS records
-            target = route53.CfnRecordSet.AliasTargetProperty(
-                dns_name=domain_name.domain_name_alias_domain_name,
-                hosted_zone_id=domain_name.domain_name_alias_hosted_zone_id,
-                evaluate_target_health=False,
-            )
+        # DNS records
+        target = route53.CfnRecordSet.AliasTargetProperty(
+            dns_name=domain_name.domain_name_alias_domain_name,
+            hosted_zone_id=domain_name.domain_name_alias_hosted_zone_id,
+            evaluate_target_health=False,
+        )
 
-            self.api_record = route53.CfnRecordSet(
-                self,
-                "ProxyApiARecord",
-                name=f"api.{self.domain_name}",
-                type="A",
-                alias_target=target,
-                hosted_zone_id=self.hosted_zone.hosted_zone_id,
-                region=self.region_name,
-                set_identifier=f"user-{cdk.Aws.STACK_NAME}",
-            )
-            add_tags(proxy_api, {"route53": self.domain_name})
+        self.api_record = route53.CfnRecordSet(
+            self,
+            "ProxyApiARecord",
+            name=f"api.{self.domain_name}",
+            type="A",
+            alias_target=target,
+            hosted_zone_id=self.hosted_zone.hosted_zone_id,
+            region=self.region_name,
+            set_identifier=f"user-{cdk.Aws.STACK_NAME}",
+        )
+        add_tags(proxy_api, {"route53": self.domain_name})
 
         return execution_alias, LambdaQueueTuple(proxy_lambda, logs_queue)
 
