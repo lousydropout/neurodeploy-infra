@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import time
 from hashlib import sha256
 from helpers import cors
-from helpers.validation import check_authorization, get_param
+from helpers.validation import check_authorization
 import boto3
 
 _PREFIX = os.environ["prefix"]
@@ -56,18 +56,19 @@ def insert_api_key_record(
 @check_authorization
 def handler(event: dict, context):
     username = event["username"]
+    params: dict = event["params"]
 
     # model-name or model_name
-    model_name = get_param("model-name", event)
+    model_name = params.get("model-name")
     if not model_name:
-        model_name = get_param("model_name", event, "*")
+        model_name = params.get("model_name", "*")
 
     # description
-    description = get_param("description", event, "")
+    description = params.get("description", "")
 
     # expiration
-    expires_after: str = get_param("expires_after", event)
-    if expires_after.isdecimal():
+    expires_after: str = params.get("expires_after")
+    if isinstance(expires_after, str) and expires_after.isdecimal():
         expires_after = int(expires_after)
     else:
         expires_after = None

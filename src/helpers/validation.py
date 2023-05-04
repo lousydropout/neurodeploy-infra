@@ -146,15 +146,21 @@ def check_authorization(func):
             logger.debug("Event (+ error response): %s", json.dumps(event, default=str))
             return event["response"]
 
+        #
+        query_params = event.get("queryStringParameters") or {}
+        body = event.get("body") or "{}"
+        body_json = json.loads(body)
+
         # Log event and pass into lambda handler
         username = payload["username"]
         parsed_event = {
             "http_method": event["httpMethod"],
             "path": event["path"],
             "headers": headers,
-            "body": event.get("body") or "{}",
-            "query_params": event.get("queryStringParameters") or {},
+            "body": body,
+            "query_params": query_params,
             "path_params": event.get("pathParameters") or {},
+            "params": {**query_params, **headers, **body_json},
             "username": username,
             "identity": request_context["identity"],
             "request_epoch_time": request_context["requestTimeEpoch"],
@@ -164,10 +170,3 @@ def check_authorization(func):
         return func(parsed_event, context)
 
     return f
-
-
-def get_param(x: str, parsed_event: dict, default: str = None) -> Any:
-    result = parsed_event["query_params"].get(x)
-    if not result:
-        result = parsed_event["headers"].get(x) or default
-    return result
