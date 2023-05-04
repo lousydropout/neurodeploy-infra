@@ -22,7 +22,7 @@ def pop(x: dict, key: str, default: str) -> Any:
 
 # model_name, model_type, persistence_type, updated_at
 def get_models(username: str) -> list[dict]:
-    statement = f"SELECT sk, library, filetype, created_at, updated_at, is_deleted FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND library IS NOT MISSING;"
+    statement = f"SELECT sk, library, filetype, created_at, updated_at, is_deleted, is_public FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND library IS NOT MISSING;"
     response = dynamodb.execute_statement(Statement=statement)
     results = [ddb.from_(x) for x in response.get("Items", [])]
     logger.debug("ml-models: %s", json.dumps(results, default=str))

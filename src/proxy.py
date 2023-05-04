@@ -1,5 +1,6 @@
 from typing import Union
 import os
+from datetime import datetime
 import json
 from hashlib import sha256
 from helpers import cors, dynamodb as ddb
@@ -22,7 +23,7 @@ MODELS_TABLE_NAME = f"{_PREFIX}_Models"
 MODELS_TABLE = dynamodb.Table(MODELS_TABLE_NAME)
 
 
-def get_model_info(username: str, model_name: str) -> tuple[dict, set[str]]:
+def get_model_info(username: str, model_name: str) -> tuple[dict, dict[str, str]]:
     statement = f"""
     SELECT * FROM {MODELS_TABLE_NAME}
     WHERE pk='username|{username}' AND (CONTAINS("sk", '{model_name}') OR CONTAINS("sk", '*'));
@@ -39,9 +40,11 @@ def get_model_info(username: str, model_name: str) -> tuple[dict, set[str]]:
         model_info = {}
 
     logger.debug("model_info: %s", json.dumps(model_info, default=str))
-    hashed_keys = set(
-        result["hashed_key"] for result in results if result["sk"] != model_name
-    )
+    hashed_keys = {
+        result["hashed_key"]: result.get("expires_at")
+        for result in results
+        if result["sk"] != model_name
+    }
     logger.debug("hashed_keys: %s", hashed_keys)
 
     return model_info, hashed_keys
@@ -95,7 +98,7 @@ def handler(event: dict, context) -> dict:
 def raises_error(
     model_info: dict,
     parsed_event: dict,
-    hashed_keys: set,
+    hashed_keys: dict[str, str],
 ) -> Union[dict, None]:
     # If model does not exist
     if not model_info:
@@ -142,6 +145,20 @@ def raises_error(
         logger.debug("hashed_value in hashed_keys: %s", hashed_value in hashed_keys)
         return cors.get_response(
             body={"error": "A valid API key is required for this ML model."},
+            status_code=403,
+            headers="*",
+            methods="POST",
+        )
+
+    # If model is not public and api key has expired
+    current_time = datetime.utcnow().isoformat()
+    if (
+        not model_info["is_public"]
+        and hashed_value in hashed_keys
+        and hashed_keys[hashed_value] < current_time
+    ):
+        return cors.get_response(
+            body={"error": "The API key you provided has already expired."},
             status_code=403,
             headers="*",
             methods="POST",

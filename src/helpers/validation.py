@@ -1,4 +1,4 @@
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Any
 import os
 from datetime import datetime, timedelta
 import functools
@@ -164,3 +164,10 @@ def check_authorization(func):
         return func(parsed_event, context)
 
     return f
+
+
+def get_param(x: str, parsed_event: dict, default: str = None) -> Any:
+    result = parsed_event["query_params"].get(x)
+    if not result:
+        result = parsed_event["headers"].get(x) or default
+    return result
