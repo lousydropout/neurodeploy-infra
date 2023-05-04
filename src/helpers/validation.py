@@ -6,6 +6,7 @@ from hashlib import sha256
 import json
 
 from helpers import cors, dynamodb as ddb, secrets
+from helpers.logging import logger
 
 import boto3
 import jwt
@@ -102,7 +103,7 @@ def check_authorization(func):
         try:
             return g(event, context)
         except Exception as err:
-            print("Error at validation: ", err)
+            logger.exception("Error at validation: %s", err)
             return cors.get_response(
                 body={"error": "Unable to validate user"},
                 status_code=500,
@@ -123,7 +124,9 @@ def check_authorization(func):
             auth_header = headers["Authorization"]
             valid, payload = validate_auth_header(auth_header)
             del headers["Authorization"]  # remove Authorization from headers
-            print("Found 'Authorization' in headers. Results: ", valid, payload)
+            logger.debug(
+                "Found 'Authorization' in headers. Results: %s, %s", valid, payload
+            )
 
         # If header validation failed, try validating access token
         if (
@@ -133,12 +136,14 @@ def check_authorization(func):
         ):
             valid, payload = validate_credentials(headers)
             del headers["secret_key"]  # remove secret_key from headers
-            print("Found access key pair in headers. Results: ", valid, payload)
+            logger.debug(
+                "Found access key pair in headers. Results: %s, %s", valid, payload
+            )
 
         # If still invalid, return 401
         if not valid:
             event["response"] = error_response("Invalid or expired credentials.")
-            print("Event (+ error response): ", json.dumps(event, default=str))
+            logger.debug("Event (+ error response): %s", json.dumps(event, default=str))
             return event["response"]
 
         # Log event and pass into lambda handler
@@ -154,7 +159,7 @@ def check_authorization(func):
             "identity": request_context["identity"],
             "request_epoch_time": request_context["requestTimeEpoch"],
         }
-        print(f"Event (after validation): {json.dumps(parsed_event)}")
+        logger.debug(f"Event (after validation): %s", json.dumps(parsed_event))
 
         return func(parsed_event, context)
 

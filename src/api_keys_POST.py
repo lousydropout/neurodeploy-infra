@@ -32,13 +32,15 @@ def insert_api_key_record(username: str, model_name: str, description: str) -> d
     }
     MODELS_TABLE.put_item(Item=record)
 
-    return {"api_key": api_key}
+    return {"api-key": api_key}
 
 
 @validation.check_authorization
 def handler(event: dict, context):
     username = event["username"]
-    model_name = event["query_params"].get("model_name") or "*"
+    model_name = event["query_params"].get("model-name")
+    if not model_name:
+        model_name = event["query_params"].get("model_name") or "*"
     description = event["query_params"].get("description") or ""
 
     return cors.get_response(

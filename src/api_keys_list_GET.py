@@ -1,5 +1,7 @@
 import os
+import json
 from helpers import cors, validation, dynamodb as ddb
+from helpers.logging import logger
 import boto3
 
 _PREFIX = os.environ["prefix"]
@@ -26,7 +28,7 @@ def get_api_keys_info(username: str, model_name: str) -> dict:
         if (result["model_name"] == model_name if model_name else True)
     ]
 
-    return {"api_keys": keys}
+    return {"api-keys": keys}
 
 
 @validation.check_authorization
@@ -36,8 +38,11 @@ def handler(event: dict, context):
     if model_name == "*":
         model_name = None
 
+    api_keys = get_api_keys_info(username=username, model_name=model_name)
+    logger.debug("api_keys: %s", json.dumps(api_keys, default=str))
+
     return cors.get_response(
         status_code=200,
-        body=get_api_keys_info(username=username, model_name=model_name),
+        body=api_keys,
         methods="GET",
     )

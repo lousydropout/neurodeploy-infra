@@ -5,6 +5,7 @@ from hashlib import sha256
 import boto3
 from helpers import cors, dynamodb as ddb, validation
 from helpers.decimal_encoder import DecimalEncoder
+from helpers.logging import logger
 
 PREFIX = os.environ["prefix"]
 
@@ -70,7 +71,7 @@ def handler(event: dict, context):
         headers, parsed_event = parse(event)
         print(f"Event: {json.dumps(parsed_event)}")
     except Exception as err:
-        print(err)
+        logger.exception(err)
         response = get_error_response(err)
         print("Response: ", json.dumps(response))
         return response
@@ -80,7 +81,7 @@ def handler(event: dict, context):
         user = get_user(headers["username"])
         print(f"User: {json.dumps(user, cls=DecimalEncoder)}")
     except Exception as err:
-        print(err)
+        logger.exception(err)
         response = get_error_response(err)
         print("Response: ", json.dumps(response))
         return response

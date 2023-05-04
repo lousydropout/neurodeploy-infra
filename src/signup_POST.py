@@ -3,6 +3,7 @@ import json
 from hashlib import sha256
 from uuid import uuid4 as uuid
 from helpers import cors, validation
+from helpers.logging import logger
 
 import boto3
 
@@ -92,7 +93,7 @@ def handler(event: dict, context) -> dict:
         parsed_event = parse(event)
     except Exception as err:
         print("failed")
-        print(err)
+        logger.exception(err)
         response = get_error_response(err)
         print("Response: ", json.dumps(response))
         return response
@@ -106,7 +107,7 @@ def handler(event: dict, context) -> dict:
         add_user_to_users_table(username, parsed_event)
     except Exception as err:
         print("failed")
-        print(err)
+        logger.exception(err)
         response = get_error_response(err)
         print("Response: ", json.dumps(response))
         return response

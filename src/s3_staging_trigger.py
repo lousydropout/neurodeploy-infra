@@ -4,6 +4,7 @@ import json
 from collections import namedtuple
 import boto3
 from helpers import dynamodb as ddb
+from helpers.logging import logger
 
 s3_tuple = namedtuple("s3_tuple", ["bucket", "key"])
 
@@ -57,13 +58,16 @@ def get_attributes(bucket_name: str, object_name: str) -> dict:
 
 
 def handler(event: dict, context):
-    print("Event: ", json.dumps(event))
+    logger.debug("Event: %s", json.dumps(event))
 
     for record in event["Records"]:
         try:
             main(record)
         except Exception as err:
-            print("Error: ", json.dumps({"event": record, "error": err}, default=str))
+            logger.error(
+                "Error: %s", json.dumps({"event": record, "error": err}, default=str)
+            )
+            logger.exception(err)
 
 
 def move_object(from_: s3_tuple, to_: s3_tuple):
@@ -85,7 +89,7 @@ def main(event: dict):
 
     # get metadata
     s3_metadata = get_attributes(bucket_name=s3_bucket, object_name=s3_object)
-    print("s3_metadata: ", json.dumps(s3_metadata, default=str))
+    logger.debug("s3_metadata: %s", json.dumps(s3_metadata, default=str))
 
     # move object
     s3_key = f"{s3_metadata['username']}/{s3_metadata['model_name']}"

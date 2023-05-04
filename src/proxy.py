@@ -3,6 +3,7 @@ import os
 import json
 from hashlib import sha256
 from helpers import cors, dynamodb as ddb
+from helpers.logging import logger
 import boto3
 
 _PREFIX = os.environ["prefix"]
@@ -28,14 +29,20 @@ def get_model_info(username: str, model_name: str) -> tuple[dict, set[str]]:
     """
     response = dynamodb_client.execute_statement(Statement=statement)
     results = [ddb.from_(x) for x in response.get("Items", [])]
-    print("get_model_info results: ", json.dumps(results, default=str))
+    logger.debug("get_model_info results: %s", json.dumps(results, default=str))
     if not results:
         raise Exception(f"Unable to locate model '{model_name}'")
 
-    model_info = next(result for result in results if result["sk"] == model_name)
+    try:
+        model_info = next(result for result in results if result["sk"] == model_name)
+    except StopIteration:
+        model_info = {}
+
+    logger.debug("model_info: %s", json.dumps(model_info, default=str))
     hashed_keys = set(
         result["hashed_key"] for result in results if result["sk"] != model_name
     )
+    logger.debug("hashed_keys: %s", hashed_keys)
 
     return model_info, hashed_keys
 
@@ -76,7 +83,7 @@ def handler(event: dict, context) -> dict:
     try:
         return main(event)
     except Exception as err:
-        print("Error at main: ", err)
+        logger.exception("Error at main: %s", err)
         return cors.get_response(
             body={"error": str(err)},
             status_code=500,
@@ -90,7 +97,16 @@ def raises_error(
     parsed_event: dict,
     hashed_keys: set,
 ) -> Union[dict, None]:
-    # If model has yet to be uploaded,
+    # If model does not exist
+    if not model_info:
+        return cors.get_response(
+            body={"error": "ML model is mising. Unable to execute model."},
+            status_code=400,
+            headers="*",
+            methods="POST",
+        )
+
+    # If model has yet to be uploaded
     if not model_info["is_uploaded"]:
         return cors.get_response(
             body={"error": "ML model is mising. Unable to execute model."},
@@ -121,9 +137,9 @@ def raises_error(
     api_key = parsed_event["headers"]["api-key"]
     hashed_value = sha256(api_key.encode()).hexdigest()
     if not model_info["is_public"] and hashed_value not in hashed_keys:
-        print("hash of key received: ", hashed_value)
-        print("hashed keys: ", hashed_keys)
-        print("hashed_value in hashed_keys: ", hashed_value in hashed_keys)
+        logger.debug("hash of key received: %s", hashed_value)
+        logger.debug("hashed keys: %s", hashed_keys)
+        logger.debug("hashed_value in hashed_keys: %s", hashed_value in hashed_keys)
         return cors.get_response(
             body={"error": "A valid API key is required for this ML model."},
             status_code=403,
@@ -131,11 +147,13 @@ def raises_error(
             methods="POST",
         )
 
+    logger.info("No error raised")
+
     return None
 
 
 def main(event: dict) -> dict:
-    print("Event: ", json.dumps(event))
+    logger.debug("Event: %s", json.dumps(event))
     success, parsed_event = parse_event(event)
     if not success:
         return cors.get_response(
@@ -151,14 +169,12 @@ def main(event: dict) -> dict:
     payload = body
     if isinstance(body, dict) and "payload" in body:
         payload = body["payload"] or ""
-    print("model_location: ", model_location)
-    print("payload: ", payload)
+    logger.debug("model_location: %s", model_location)
+    logger.debug("payload: %s", payload)
     username, model_name = model_location.strip().strip("/").split("/")
 
     # Create payload for the execution lambda
     model_info, hashed_keys = get_model_info(username=username, model_name=model_name)
-    print("model_info: ", json.dumps(model_info, default=str))
-    print("hashed_keys: ", hashed_keys)
 
     # Validate the user has permission (return error response if there is one, else assume everything's fine)
     error = raises_error(
@@ -176,7 +192,7 @@ def main(event: dict) -> dict:
         },
         default=str,
     )
-    print("lambda_payload: ", lambda_payload)
+    logger.debug("lambda_payload: %s", lambda_payload)
 
     # Invoke the execution lambda with the above payload
     try:
@@ -186,15 +202,15 @@ def main(event: dict) -> dict:
             Payload=lambda_payload,
         )
     except lambda_.exceptions.TooManyRequestsException as err:
-        print("TooManyRequestsException: ", err)
+        logger.exception("TooManyRequestsException: %s", err)
         status_code, result = 429, {"error": "Too Many Requests"}
     except Exception as err:
-        print("Exception: ", err)
+        logger.exception("Exception: %s", err)
         status_code, result = 400, {"error": str(err)}
     else:
         status_code = 200
         response = lambda_response["Payload"].read().decode()
-        print("Result: ", response)
+        logger.exception("Result: %s", response)
         result = {"output": json.loads(response)["output"]}
 
     # Parse and return result

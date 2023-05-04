@@ -1,8 +1,7 @@
 import os
 import json
-from helpers import cors
-from helpers import dynamodb as ddb
-from helpers import validation
+from helpers import cors, dynamodb as ddb, validation
+from helpers.logging import logger
 import boto3
 
 PREFIX = os.environ["prefix"]
@@ -45,7 +44,7 @@ def handler(event: dict, context):
             },
         )
 
-    print("response: ", json.dumps(response, default=str))
+    logger.info("response: %s", json.dumps(response, default=str))
 
     return cors.get_response(
         status_code=200,

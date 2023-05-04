@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 import json
 from helpers import cors, validation, dynamodb as ddb
+from helpers.logging import logger
 import boto3
 
 _PREFIX = os.environ["prefix"]
@@ -55,7 +56,7 @@ def handler(event: dict, context):
     try:
         delete_model(username, model_name)
     except Exception as err:
-        print(err)
+        logger.exception(err)
         return cors.get_response(
             status_code=400,
             body={"error_message": f"Failed to delete model {model_name}"},

@@ -1,6 +1,7 @@
 import os
 import json
 from flows import delete_user_api_resources as delete
+from helpers.logging import logger
 
 _REGION_NAME = os.environ["region_name"]
 _empty = {
@@ -23,23 +24,23 @@ def delete_resources(username: str, region_name: str, **kwargs):
             "Indicated region": region_name,
             "Expected region": _REGION_NAME,
         }
-        print("result: ", json.dumps(result, default=str))
+        logger.debug("result: %s", json.dumps(result, default=str))
         return
 
     record = delete.get_record(username, region_name)
     resources = {**_empty, **record.get("resources", {})}
 
-    print("resources: ", json.dumps(resources, default=str))
+    logger.debug("resources: %s", json.dumps(resources, default=str))
     delete.delete_resources(username, **resources)
 
 
 def handler(event: dict, context):
-    print("Event: ", json.dumps(event))
+    logger.debug("Event: %s", json.dumps(event))
     if "Records" not in event:
         delete_resources(**event)
         return
 
     for k, record in enumerate(event.get("Records", [])):
         body = json.loads(record["body"])
-        print(f"{k}: {record['body']}")
+        logger.debug(f"{k}: {record['body']}")
         delete_resources(**body)

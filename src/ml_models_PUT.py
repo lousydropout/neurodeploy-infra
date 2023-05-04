@@ -4,6 +4,7 @@ from datetime import datetime
 import string
 import json
 from helpers import cors, validation, dynamodb as ddb
+from helpers.logging import logger
 import boto3
 from botocore.exceptions import ClientError
 
@@ -116,7 +117,7 @@ def create_presigned_post(
             ExpiresIn=expiration,
         )
     except ClientError as err:
-        print(err)
+        logger.exception(err)
         raise err
 
     # The response contains the presigned URL and required fields
@@ -189,9 +190,9 @@ def handler(event: dict, context) -> dict:
 
     body = json.loads(event["body"])
     query_params = event["query_params"]
-    print("body, query_params: ", body, query_params)
+    logger.debug("body, query_params: %s, %s", body, query_params)
     params = {**body, **query_params}  # query params take precedence
-    print("params: ", params)
+    logger.debug("params: %s", params)
 
     lib_type = params["lib"]
     filetype = params["filetype"]
@@ -246,7 +247,7 @@ def handler(event: dict, context) -> dict:
             {"Content-Type": f"model/{filetype}"},
         ],
     )
-    print("Response: ", json.dumps(response))
+    logger.debug("Response: %s", json.dumps(response))
 
     return cors.get_response(
         status_code=201,

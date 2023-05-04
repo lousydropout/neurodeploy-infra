@@ -1,8 +1,7 @@
 import os
 import json
-from helpers import cors
-from helpers import dynamodb as ddb
-from helpers import validation
+from helpers import cors, dynamodb as ddb, validation
+from helpers.logging import logger
 import boto3
 
 PREFIX = os.environ["prefix"]
@@ -21,12 +20,12 @@ def get_creds(username: str) -> list[dict]:
 
 @validation.check_authorization
 def handler(event: dict, context):
-    print("Event: ", json.dumps(event))
+    logger.debug("Event: %s", json.dumps(event))
     username = event["username"]
     response = get_creds(username)
     creds = [{"credentials_name": item.pop("sk"), **item} for item in response]
 
-    print("creds: ", json.dumps(creds))
+    logger.debug("creds: %s", json.dumps(creds))
     return cors.get_response(
         body={"creds": creds},
         status_code=200,

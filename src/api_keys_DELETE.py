@@ -3,6 +3,7 @@ import json
 from uuid import UUID
 from hashlib import sha256
 from helpers import cors, dynamodb as ddb, validation
+from helpers.logging import logger
 import boto3
 
 _PREFIX = os.environ["prefix"]
@@ -37,7 +38,7 @@ def delete_api_key(username: str, api_key: str, is_hashed: bool) -> dict:
         f"DELETE FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{sk}';"
     )
     response = dynamodb_client.execute_statement(Statement=statement)
-    print("deletion response: ", json.dumps(response, default=str))
+    logger.info("deletion response: %s", json.dumps(response, default=str))
 
     if response.get("ResponseMetadata", {}).get("HTTPStatusCode", -1) == 200:
         return cors.get_response(

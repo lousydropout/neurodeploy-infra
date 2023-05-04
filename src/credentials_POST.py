@@ -3,8 +3,8 @@ import json
 import string
 from hashlib import sha256
 from uuid import uuid4 as uuid
-from helpers import cors
-from helpers import validation
+from helpers import cors, validation
+from helpers.logging import logger
 import boto3
 
 UTF_8 = "utf-8"
@@ -72,7 +72,7 @@ def is_invalid(credential_name: str) -> str:
 
 @validation.check_authorization
 def handler(event: dict, context):
-    print("Event: ", json.dumps(event))
+    logger.debug("Event: %s", json.dumps(event))
     username = event["username"]
     headers = event["headers"]
     params = event["query_params"] or headers
@@ -117,15 +117,14 @@ def handler(event: dict, context):
             expiration=expiration,
         )
     except Exception as err:
-        print("failed")
-        print(err)
+        logger.exception(err)
         response = cors.get_response(
             status_code=400, body={"error_message": err}, methods="POST"
         )
-        print("Response: ", json.dumps(response))
+        logger.debug("Response: %s", json.dumps(response))
         return response
 
-    print("Response: ", json.dumps(response))
+    logger.debug("Response: %s", json.dumps(response))
     return cors.get_response(
         status_code=201,
         methods="POST",
