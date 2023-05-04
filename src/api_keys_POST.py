@@ -22,7 +22,7 @@ def insert_api_key_record(
     username: str,
     model_name: str,
     description: str,
-    expiration: int,
+    expires_after: int,
 ) -> dict:
     api_key = str(uuid())
     hashed_value = sha256(api_key.encode()).hexdigest()
@@ -38,13 +38,13 @@ def insert_api_key_record(
         "updated_at": datetime.utcnow().isoformat(),
     }
     # set expiration
-    exp = None
-    if expiration:
-        exp = datetime.utcnow() + timedelta(minutes=expiration)
+    expiration = None
+    if expires_after:
+        expiration = datetime.utcnow() + timedelta(minutes=expires_after)
         record.update(
             {
-                "ttl": int(time.mktime(exp.timetuple())),
-                "expires_at": exp.isoformat(),
+                "ttl": int(time.mktime(expiration.timetuple())),
+                "expires_at": expiration.isoformat(),
             }
         )
 
@@ -66,11 +66,11 @@ def handler(event: dict, context):
     description = get_param("description", event, "")
 
     # expiration
-    expiration: str = get_param("expiration", event)
-    if expiration.isdecimal():
-        expiration = int(expiration)
+    expires_after: str = get_param("expires_after", event)
+    if expires_after.isdecimal():
+        expires_after = int(expires_after)
     else:
-        expiration = None
+        expires_after = None
 
     return cors.get_response(
         status_code=200,
@@ -78,7 +78,7 @@ def handler(event: dict, context):
             username=username,
             model_name=model_name,
             description=description,
-            expiration=expiration,
+            expires_after=expires_after,
         ),
         methods="POST",
     )
