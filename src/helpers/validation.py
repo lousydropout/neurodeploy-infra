@@ -113,6 +113,7 @@ def check_authorization(func):
 
     @functools.wraps(f)
     def g(event: dict, context):
+        logger.debug("Event: %s", json.dumps(event, default=str))
         # Parse event
         headers = event.get("headers") or {}
         request_context = event["requestContext"]
