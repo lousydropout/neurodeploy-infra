@@ -102,10 +102,20 @@ def check_authorization(func):
     def f(event: dict, context):
         try:
             return g(event, context)
+        except json.decoder.JSONDecodeError as err:
+            logger.exception("JSON error: %s", err)
+            return cors.get_response(
+                body={"error": "Unable to parse"},
+                status_code=400,
+                headers="*",
+                methods="POST",
+            )
         except Exception as err:
             logger.exception("Error at validation: %s", err)
             return cors.get_response(
-                body={"error": "Unable to validate user"},
+                body={
+                    "error": "Unable to validate user request. Please confirm that the request body is a JSON string."
+                },
                 status_code=500,
                 headers="*",
                 methods="POST",
