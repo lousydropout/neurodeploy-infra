@@ -47,12 +47,40 @@ def delete_model(username: str, model_name: str) -> tuple[bool, str]:
     return (True, "")
 
 
+def delete_api_keys(username: str, model_name: str) -> bool:
+    try:
+        statement = f"SELECT * FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
+        response = dynamodb_client.execute_statement(Statement=statement)
+        logger.debug("delete api keys response: %s", json.dumps(response, default=str))
+    except:
+        return False
+    return True
+
+
 @validation.check_authorization
 def handler(event: dict, context):
     username = event["username"]
     model_name = event["path_params"]["model_name"]
+    delete_api_keys = (
+        event["params"].get("delete_api_keys") or "true"
+    ).strip().lower() == "true"
 
-    # Delete resource
+    # 1. delete API keys associated with model
+    success = (
+        delete_api_keys(username=username, model_name=model_name)
+        if delete_api_keys
+        else True
+    )
+    if not success:
+        return cors.get_response(
+            status_code=500,
+            body={
+                "error_message": f"An error occurred when deleting the API keys associated with model '{model_name}'. "
+                "Please try again later or set the query param 'delete_api_keys' to 'false'."
+            },
+        )
+
+    # 2. delete model
     try:
         delete_model(username, model_name)
     except Exception as err:

@@ -38,7 +38,7 @@ def handler(event: dict, context):
         response = delete_credential(username, credential_name)
     except:
         return cors.get_response(
-            status_code=200,
+            status_code=400,
             body={
                 "error_message": f"Unable to delete credentials '{credential_name}'. Please confirm credential's name."
             },
