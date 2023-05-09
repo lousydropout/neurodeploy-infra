@@ -1,5 +1,6 @@
 pytest==6.2.5
 boto3-stubs
+boto3-stubs[dynamodb]
 boto3-stubs[ecr]
 mypy-boto3-apigateway
 pyjwt

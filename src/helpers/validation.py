@@ -108,7 +108,7 @@ def check_authorization(func):
                 body={"error": "Unable to parse"},
                 status_code=400,
                 headers="*",
-                methods="POST",
+                methods="*",
             )
         except Exception as err:
             logger.exception("Error at validation: %s", err)
@@ -118,7 +118,7 @@ def check_authorization(func):
                 },
                 status_code=500,
                 headers="*",
-                methods="POST",
+                methods="*",
             )
 
     @functools.wraps(f)

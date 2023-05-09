@@ -13,9 +13,13 @@ MODELS_TABLE_NAME = f"{_PREFIX}_Models"
 dynamodb = boto3.client("dynamodb")
 
 
-def pop(x: dict, key: str, default: str) -> Any:
+def pop(x: dict, key: str, default: bool) -> bool:
     try:
-        return x.pop(key)
+        val = x.pop(key)
+        logger.debug(
+            "is_deleted: %s", json.dumps({"val": val, "type": type(val)}, default=str)
+        )
+        return val
     except KeyError:
         return default
 

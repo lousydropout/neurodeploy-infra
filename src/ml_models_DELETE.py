@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 from helpers import cors, validation, dynamodb as ddb
 from helpers.logging import logger
+from api_keys_list_GET import get_api_keys_info
 import boto3
 
 _PREFIX = os.environ["prefix"]
@@ -40,20 +41,38 @@ def delete_model(username: str, model_name: str) -> tuple[bool, str]:
             "deleted_at": datetime.utcnow().isoformat(),
         }
     )
+    logger.debug("new model record 1: %s", json.dumps(record, default=str))
     try:
         MODELS_TABLE.put_item(Item=record)
     except Exception as err:
+        logger.exception(err)
         return (False, str(err))
+
+    record = get_model(username=username, model_name=model_name)
+    logger.debug("new model record 2: %s", json.dumps(record, default=str))
     return (True, "")
 
 
-def delete_api_keys(username: str, model_name: str) -> bool:
-    try:
-        statement = f"SELECT * FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{model_name}';"
-        response = dynamodb_client.execute_statement(Statement=statement)
-        logger.debug("delete api keys response: %s", json.dumps(response, default=str))
-    except:
+def delete_associated_api_keys(username: str, model_name: str) -> bool:
+    keys = get_api_keys_info(username=username, model_name=model_name)
+    logger.debug("keys: %s", json.dumps(keys, default=str))
+    statement = f"DELETE FROM {MODELS_TABLE_NAME} WHERE pk='username|{username}' AND sk='{{hashed_key}}|{model_name}';"
+    statements = [
+        {"Statement": statement.format(hashed_key=item["hashed_key"])}
+        for item in keys["api-keys"]
+    ]
+
+    if not statements:
+        return True
+
+    response = dynamodb_client.batch_execute_statement(Statements=statements)
+    logger.debug("deletion response: %s", json.dumps(response, default=str))
+
+    errors = [x["Error"] for x in response["Responses"] if "Error" in x]
+    if errors:
+        logger.error("Deletion errors: %s", json.dumps(errors, default=str))
         return False
+
     return True
 
 
@@ -67,7 +86,7 @@ def handler(event: dict, context):
 
     # 1. delete API keys associated with model
     success = (
-        delete_api_keys(username=username, model_name=model_name)
+        delete_associated_api_keys(username=username, model_name=model_name)
         if delete_api_keys
         else True
     )
@@ -81,10 +100,9 @@ def handler(event: dict, context):
         )
 
     # 2. delete model
-    try:
-        delete_model(username, model_name)
-    except Exception as err:
-        logger.exception(err)
+    success, error = delete_model(username, model_name)
+    if not success:
+        logger.error(error)
         return cors.get_response(
             status_code=400,
             body={"error_message": f"Failed to delete model {model_name}"},
