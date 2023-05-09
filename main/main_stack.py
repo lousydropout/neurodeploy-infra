@@ -265,6 +265,8 @@ class MainStack(Stack):
                 "/",
                 "/sign-up",
                 "/sign-in",
+                "/sessions",
+                "/users",
                 "/api-keys",
                 "/api-keys/{api_key}",
                 "/credentials",
@@ -308,6 +310,31 @@ class MainStack(Stack):
             filename_overwrite="signup_OPTIONS",
         )
 
+        # users
+        POST_users = self.add(
+            "/users",
+            "POST",
+            "users",
+            filename_overwrite="users_POST",
+            tables=[(self.users, _READ_WRITE), (self.creds, _READ_WRITE)],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+            create_queue=True,
+        )
+        POST_users.lambda_function.add_environment("domain_name", self.domain_name)
+        POST_users.lambda_function.add_environment(
+            "hosted_zone_id", self.hosted_zone.hosted_zone_id
+        )
+        POST_users.lambda_function.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
+        )
+        OPTIONS_users = self.add(
+            "/users",
+            "OPTIONS",
+            "users",
+            filename_overwrite="users_OPTIONS",
+        )
+
         # sign-in
         POST_signin = self.add(
             "/sign-in",
@@ -327,6 +354,26 @@ class MainStack(Stack):
             "OPTIONS",
             "sign-in",
             filename_overwrite="signin_OPTIONS",
+        )
+        # sessions
+        POST_sessions = self.add(
+            "/sessions",
+            "POST",
+            "sessions",
+            filename_overwrite="sessions_POST",
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ_WRITE),
+                (self.models, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+        OPTIONS_sessions = self.add(
+            "/sessions",
+            "OPTIONS",
+            "sessions",
+            filename_overwrite="sessions_OPTIONS",
         )
 
         # apikeys
@@ -555,8 +602,8 @@ class MainStack(Stack):
         return (
             api,
             {
-                "POST_signup": POST_signup,
-                "POST_signin": POST_signin,
+                "POST_signup": POST_users,
+                "POST_signin": POST_sessions,
                 "GET_creds": GET_creds,
                 "PUT_ml_models": PUT_ml_models,
                 "DELETE_ml_models": DELETE_ml_models,
