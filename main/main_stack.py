@@ -263,16 +263,15 @@ class MainStack(Stack):
             resource=api.root,
             paths=[
                 "/",
-                "/sign-up",
                 "/sign-in",
-                "/sessions",
-                "/users",
                 "/api-keys",
                 "/api-keys/{api_key}",
                 "/credentials",
                 "/credentials/{credential_name}",
                 "/ml-models",
                 "/ml-models/{model_name}",
+                "/sessions",
+                "/users",
             ],
         )
 
@@ -283,31 +282,6 @@ class MainStack(Stack):
             mapping=api,
             certificate=self.main_cert,
             domain_name=f"{_USER_API}.{self.domain_name}",
-        )
-
-        # sign-up
-        POST_signup = self.add(
-            "/sign-up",
-            "POST",
-            "sign-up",
-            filename_overwrite="signup_POST",
-            tables=[(self.users, _READ_WRITE), (self.creds, _READ_WRITE)],
-            secrets=[("jwt_secret", self.jwt_secret)],
-            layers=[self.py_jwt_layer],
-            create_queue=True,
-        )
-        POST_signup.lambda_function.add_environment("domain_name", self.domain_name)
-        POST_signup.lambda_function.add_environment(
-            "hosted_zone_id", self.hosted_zone.hosted_zone_id
-        )
-        POST_signup.lambda_function.role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name(_ACM_FULL_PERMISSION_POLICY)
-        )
-        OPTIONS_signup = self.add(
-            "/sign-up",
-            "OPTIONS",
-            "sign-up",
-            filename_overwrite="signup_OPTIONS",
         )
 
         # users
