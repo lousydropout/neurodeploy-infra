@@ -1,10 +1,10 @@
-from typing import Union, Any
 import os
-from time import time_ns
+from time import time
 from datetime import datetime
 import json
 from hashlib import sha256
 from helpers import cors, dynamodb as ddb
+from helpers.decimal_encoder import DecimalEncoder
 from helpers.logging import logger
 import boto3
 
@@ -129,7 +129,7 @@ def handler(event: dict, context) -> dict:
         )
 
     start_time = datetime.utcnow().isoformat()
-    start = time_ns()
+    start = time()
     logger.info("start time: %s, %s", start_time, start)
 
     # get username and model_name
@@ -170,6 +170,7 @@ def handler(event: dict, context) -> dict:
     except Exception as err:
         logger.exception("Error at main: %s", err)
         error = str(error)
+        output_and_error = {"output": None, "error": error}
         result = cors.get_response(
             body={"error": error},
             status_code=500,
@@ -178,7 +179,7 @@ def handler(event: dict, context) -> dict:
         )
 
     # get duration
-    duration = (time_ns() - start) // 1000
+    duration = int((time() - start) * 1000)  # in milliseconds
 
     # get output and error
     output = output_and_error.get("output")
@@ -207,13 +208,9 @@ def handler(event: dict, context) -> dict:
         model_name=model_name,
         start_time=start_time,
         duration=duration,
-        input=(
-            json.dumps(payload, default=str)
-            if isinstance(payload, list | dict)
-            else payload
-        ),
+        input=event["body"],
         output=(
-            json.dumps(output, default=str)
+            json.dumps(output, cls=DecimalEncoder, default=str)
             if isinstance(output, list | dict)
             else output
         ),
@@ -228,7 +225,7 @@ def raises_error(
     model_info: dict,
     parsed_event: dict,
     hashed_keys: dict[str, str],
-) -> Union[dict, None]:
+) -> dict | None:
     # If model does not exist
     if not model_info:
         return cors.get_response(
@@ -314,7 +311,6 @@ def main(model_location: str, payload: str, model_info: dict) -> tuple[dict, dic
     logger.debug("lambda_payload: %s", lambda_payload)
 
     # Invoke the execution lambda with the above payload
-    output, error = None, None
     try:
         lambda_response = lambda_.invoke(
             FunctionName=EXECUTION_LAMBDA_ARN,
@@ -328,11 +324,16 @@ def main(model_location: str, payload: str, model_info: dict) -> tuple[dict, dic
         logger.exception("Exception: %s", err)
         status_code, result = 400, {"error": str(err)}
     else:
-        status_code = 200
         response = lambda_response["Payload"].read().decode()
-        logger.info("Result: %s", response)
-        output = json.loads(response)["output"]
-        result = {"output": output}
+        logger.info("Response: %s", response)
+        response_dict = json.loads(response)
+
+        if "output" in response_dict:
+            status_code = 200
+            result = {"output": response_dict["output"]}
+        else:
+            status_code = 400
+            result = {"error": response_dict["error"]}
 
     # Parse and return result
     return result, cors.get_response(
