@@ -2,7 +2,7 @@ import json
 
 
 def get_response(
-    body: dict = None,
+    body: dict | None = None,
     status_code: int = 200,
     headers: str = "*",
     methods: str = "*",

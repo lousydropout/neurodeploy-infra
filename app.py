@@ -62,7 +62,10 @@ for region in _REGIONS:
         account_number=_ACCOUNT,
         region_name=region,
         other_regions=[x for x in _REGIONS if x != region],
-        buckets={"models_bucket": base[f"RegionalBase-{region}"].models_bucket},
+        buckets={
+            "models_bucket": base[f"RegionalBase-{region}"].models_bucket,
+            "logs_bucket": base[f"RegionalBase-{region}"].logs_bucket,
+        },
         vpc=base[f"RegionalBase-{region}"].vpc,
         env_=env_,
         env=cdk.Environment(account=_ACCOUNT, region=region),

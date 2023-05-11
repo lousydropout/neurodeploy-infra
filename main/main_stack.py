@@ -52,13 +52,13 @@ _USER_API = "user-api"
 
 
 class RouteResource:
-    def __init__(self, paths: list[str], resource: apigw.IResource):
+    def __init__(self, paths: list[str], resource: apigw.Resource):
         self.routes = {}
         for path in sorted(paths):
             nodes = ("root" + path).rstrip("/").split("/")
             self.add_child(self.routes, nodes, resource)
 
-    def add_child(self, curr: dict, nodes: list[str], resource: apigw.IResource):
+    def add_child(self, curr: dict, nodes: list[str], resource: apigw.Resource):
         # base case
         if not nodes:
             return
@@ -98,10 +98,10 @@ class MainStack(Stack):
         return dynamodb.Table.from_table_name(self, name, f"{self.prefix}_{name}")
 
     def import_databases(self):
-        self.users: dynamodb.Table = self.import_dynamodb_table("Users")
-        self.creds: dynamodb.Table = self.import_dynamodb_table("Creds")
-        self.models: dynamodb.Table = self.import_dynamodb_table("Models")
-        self.usages: dynamodb.Table = self.import_dynamodb_table("Usages")
+        self.users: dynamodb.ITable = self.import_dynamodb_table("Users")
+        self.creds: dynamodb.ITable = self.import_dynamodb_table("Creds")
+        self.models: dynamodb.ITable = self.import_dynamodb_table("Models")
+        self.usages: dynamodb.ITable = self.import_dynamodb_table("Usages")
 
     def import_secrets(self):
         self.jwt_secret = sm.Secret.from_secret_name_v2(
@@ -139,11 +139,11 @@ class MainStack(Stack):
     def create_lambda(
         self,
         id: str,
-        tables: List[Tuple[dynamodb.Table, Permission]] = None,
-        buckets: List[Tuple[s3.Bucket, Permission]] = None,
-        layers: List[lambda_.LayerVersion] = None,
-        queue: sqs.Queue = None,
-    ) -> lambda_.Function:
+        tables: List[Tuple[dynamodb.ITable, Permission]] | None = None,
+        buckets: List[Tuple[s3.Bucket, Permission]] | None = None,
+        layers: List[lambda_.ILayerVersion] | None = None,
+        queue: sqs.Queue | None = None,
+    ) -> lambda_.IFunction:
         # environment variables for the lambda function
         env = {table.table_name: table.table_arn for (table, _) in tables or []}
         env["region_name"] = self.region_name
@@ -190,11 +190,11 @@ class MainStack(Stack):
         path: str,
         http_method: str,
         resource_name: str,
-        filename_overwrite: str = None,
-        tables: List[Tuple[dynamodb.Table, Permission]] = None,
-        buckets: List[Tuple[s3.Bucket, Permission]] = None,
-        secrets: List[Tuple[str, sm.Secret]] = None,
-        layers: List[lambda_.LayerVersion] = None,
+        filename_overwrite: str | None = None,
+        tables: List[Tuple[dynamodb.ITable, Permission]] | None = None,
+        buckets: List[Tuple[s3.Bucket, Permission]] | None = None,
+        secrets: List[Tuple[str, sm.ISecret]] | None = None,
+        layers: List[lambda_.ILayerVersion] | None = None,
         create_queue: bool = False,
     ) -> LambdaQueueTuple:
         resource = self.resources.get(path)
@@ -719,6 +719,7 @@ class MainStack(Stack):
         add_tags(proxy_lambda, {"lambda": "proxy"})
         execution_alias.grant_invoke(proxy_lambda)
         self.models.grant_full_access(proxy_lambda)
+        self.usages.grant_full_access(proxy_lambda)
 
         logs_queue = sqs.Queue(
             self,
@@ -864,7 +865,7 @@ class MainStack(Stack):
         self.domain_name = domain_name
 
         self.models_bucket = buckets["models_bucket"]
-        self.logs_bucket = buckets["models_bucket"]
+        self.logs_bucket = buckets["logs_bucket"]
         self.create_staging_bucket()
 
         self.vpc = vpc

@@ -67,7 +67,7 @@ def add_user_to_users_table(username: str, payload: dict):
 
 def get_number_of_users() -> int:
     response = dynamodb_client.scan(
-        TableName=_USERS_TABLE,
+        TableName=_USERS_TABLE_NAME,
         Limit=101,
         Select="SPECIFIC_ATTRIBUTES",
         ProjectionExpression="pk",
