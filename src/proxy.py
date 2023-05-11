@@ -137,7 +137,7 @@ def raises_error(
         )
 
     # If model is not public but no api key provided matches
-    api_key = parsed_event["headers"]["api-key"]
+    api_key = parsed_event["headers"].get("api-key") or ""
     hashed_value = sha256(api_key.encode()).hexdigest()
     if not model_info["is_public"] and hashed_value not in hashed_keys:
         logger.debug("hash of key received: %s", hashed_value)
