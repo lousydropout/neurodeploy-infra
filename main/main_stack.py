@@ -270,6 +270,8 @@ class MainStack(Stack):
                 "/credentials/{credential_name}",
                 "/ml-models",
                 "/ml-models/{model_name}",
+                "/ml-models/{model_name}/logs",
+                "/ml-models/{model_name}/logs/{log_timestamp}",
                 "/sessions",
                 "/users",
             ],
@@ -553,6 +555,20 @@ class MainStack(Stack):
             ],
             secrets=[("jwt_secret", self.jwt_secret)],
             layers=[self.py_jwt_layer],
+        )
+
+        # ml-models - logs
+        OPTIONS_ml_models_logs = self.add(
+            "/ml-models/{model_name}/logs",
+            "OPTIONS",
+            "ml-models-logs",
+            filename_overwrite="ml_models_logs_OPTIONS",
+        )
+        OPTIONS_ml_models_logs_proxy = self.add(
+            "/ml-models/{model_name}/logs/{log_timestamp}",
+            "OPTIONS",
+            "ml-models-logs-timestamp",
+            filename_overwrite="ml_models_logs_proxy_OPTIONS",
         )
 
         # DNS records
