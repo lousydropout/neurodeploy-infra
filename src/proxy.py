@@ -33,7 +33,7 @@ def add_to_usages_table(
     start_time: str,
     location: str,
     duration: int,
-    input: str,
+    input: str | None,
     output: str | None,
     error: str | None,
 ):
@@ -202,19 +202,34 @@ def handler(event: dict, context) -> dict:
     )
 
     # add to dynamodb
+    limit = 10_000  # number of characters for 10kB
+    output_string = (
+        json.dumps(output, cls=DecimalEncoder, default=str)
+        if isinstance(output, list | dict)
+        else output
+    )
+    error_string = (
+        json.dumps(error, cls=DecimalEncoder, default=str)
+        if isinstance(error, list | dict)
+        else error
+    )
     add_to_usages_table(
         status_code=result["statusCode"],
         username=username,
         model_name=model_name,
         start_time=start_time,
         duration=duration,
-        input=event["body"],
+        input=event["body"] if len(event["body"]) < limit else None,
         output=(
-            json.dumps(output, cls=DecimalEncoder, default=str)
-            if isinstance(output, list | dict)
-            else output
+            output_string
+            if not isinstance(output_string, str) or len(output_string) < limit
+            else None
         ),
-        error=error,
+        error=(
+            error_string
+            if not isinstance(error_string, str) or len(error_string) < limit
+            else None
+        ),
         location=location,
     )
 
@@ -230,7 +245,7 @@ def raises_error(
     if not model_info:
         return cors.get_response(
             body={"error": "ML model is mising. Unable to execute model."},
-            status_code=400,
+            status_code=404,
             headers="*",
             methods="POST",
         )
@@ -238,8 +253,10 @@ def raises_error(
     # If model has yet to be uploaded
     if not model_info["is_uploaded"]:
         return cors.get_response(
-            body={"error": "ML model is mising. Unable to execute model."},
-            status_code=500,
+            body={
+                "error": "ML model has not yet been uploaded. Unable to execute model."
+            },
+            status_code=404,
             headers="*",
             methods="POST",
         )
@@ -248,7 +265,7 @@ def raises_error(
     if model_info["is_deleted"]:
         return cors.get_response(
             body={"error": "Cannot execute deleted ML model."},
-            status_code=500,
+            status_code=400,
             headers="*",
             methods="POST",
         )

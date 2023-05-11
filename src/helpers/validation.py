@@ -110,12 +110,20 @@ def check_authorization(func):
                 headers="*",
                 methods="*",
             )
-        except Exception as err:
+        except TypeError as err:
             logger.exception("Error at validation: %s", err)
             return cors.get_response(
                 body={
                     "error": "Unable to validate user request. Please confirm that the request body is a JSON string."
                 },
+                status_code=500,
+                headers="*",
+                methods="*",
+            )
+        except Exception as err:
+            logger.exception("Error at validation: %s", err)
+            return cors.get_response(
+                body={"error": str(err)},
                 status_code=500,
                 headers="*",
                 methods="*",

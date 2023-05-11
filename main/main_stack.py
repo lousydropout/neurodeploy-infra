@@ -570,6 +570,33 @@ class MainStack(Stack):
             "ml-models-logs-timestamp",
             filename_overwrite="ml_models_logs_proxy_OPTIONS",
         )
+        GET_list_of_ml_models_logs = self.add(
+            "/ml-models/{model_name}/logs",
+            "GET",
+            "ml-models-logs",
+            filename_overwrite="ml_models_logs_list_GET",
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.usages, _READ_WRITE),
+            ],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
+        GET_ml_models_logs = self.add(
+            "/ml-models/{model_name}/logs/{log_timestamp}",
+            "GET",
+            "ml-models-logs",
+            filename_overwrite="ml_models_logs_GET",
+            tables=[
+                (self.users, _READ),
+                (self.creds, _READ),
+                (self.usages, _READ_WRITE),
+            ],
+            buckets=[(self.logs_bucket, _READ_WRITE)],
+            secrets=[("jwt_secret", self.jwt_secret)],
+            layers=[self.py_jwt_layer],
+        )
 
         # DNS records
         target = route53.CfnRecordSet.AliasTargetProperty(
@@ -735,7 +762,6 @@ class MainStack(Stack):
         add_tags(proxy_lambda, {"lambda": "proxy"})
         execution_alias.grant_invoke(proxy_lambda)
         self.models.grant_full_access(proxy_lambda)
-        self.usages.grant_full_access(proxy_lambda)
 
         logs_queue = sqs.Queue(
             self,
