@@ -1,4 +1,4 @@
 #!/bin/bash
 rm -rf cdk.out
 export ENV=dev
-ENV=$ENV cdk deploy MainStack-us-west-1 --require-approval any-change --profile $ENV
+ENV=$ENV cdk deploy MainStack-us-west-1 --exclusively --require-approval any-change --profile $ENV

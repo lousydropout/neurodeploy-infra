@@ -1,4 +1,4 @@
 #!/bin/bash
 rm -rf cdk.out
 export ENV=prod
-ENV=$ENV cdk deploy RegionalBase-us-east-2-$ENV --require-approval any-change --profile $ENV
+ENV=$ENV cdk deploy RegionalBase-us-east-2-$ENV --exclusively --require-approval any-change --profile $ENV
