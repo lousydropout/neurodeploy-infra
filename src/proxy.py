@@ -190,10 +190,14 @@ def handler(event: dict, context) -> dict:
     s3.put_object(
         Body=json.dumps(
             {
+                "username": username,
+                "model_name": model_name,
+                "status_code": result["statusCode"],
+                "start_time": start_time,
+                "duration": duration,
                 "input": payload,
                 "output": output,
                 "error": error,
-                "status_code": result["statusCode"],
             },
             default=str,
         ),

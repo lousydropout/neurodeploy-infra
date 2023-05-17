@@ -17,23 +17,41 @@ def get_logs_info(
     model_name: str,
     limit: int,
     asc: bool,
-    start_from: str,
+    start_from: str | None,
+    next_token: str | None,
+    inclusive: bool,
 ) -> dict:
     fields = ["sk", "status_code", "duration", "input", "output", "error"]
     field_string = ", ".join([f'"{x}"' for x in fields])  # wrap fields in double quotes
+    sort_clause = ""
+    if asc and start_from:
+        sort_clause = (
+            f"AND sk >= '{start_from}'" if inclusive else f"AND sk > '{start_from}'"
+        )
+    elif (not asc) and start_from:
+        sort_clause = (
+            f"AND sk <= '{start_from}'" if inclusive else f"AND sk < '{start_from}'"
+        )
     statement = " ".join(
         [
             f"SELECT {field_string}",
             f"FROM {USAGES_TABLE_NAME}",
             f"WHERE pk='{username}|{model_name}'",
-            f"AND sk > {start_from}" if start_from else "",
+            sort_clause,
             f"ORDER BY sk {'ASC' if asc else 'DESC'};",
         ]
     )
     logger.debug("statement: %s", statement)
-    response = dynamodb_client.execute_statement(Statement=statement, Limit=limit)
-    results = [ddb.from_(x) for x in response.get("Items", [])]
+    if next_token:
+        response = dynamodb_client.execute_statement(
+            Statement=statement, NextToken=next_token
+        )
+    else:
+        response = dynamodb_client.execute_statement(Statement=statement, Limit=limit)
+    logger.debug("response: %s", json.dumps(response, default=str))
 
+    # parse results
+    results = [ddb.from_(x) for x in response.get("Items", [])]
     keys = [
         {
             "timestamp": result["sk"],
@@ -46,7 +64,10 @@ def get_logs_info(
         for result in results
     ]
 
-    return {"logs": keys}
+    # get next token if present
+    next = response["NextToken"] if "NextToken" in response else None
+
+    return {"logs": keys, "next_token": next}
 
 
 @validation.check_authorization
@@ -79,12 +100,23 @@ def handler(event: dict, context):
     except:
         start_from = None
 
+    # get inclusivity (default to True)
+    try:
+        inclusive = (params.get("inclusive") or "").lower() != "false"
+    except:
+        inclusive = True
+
+    # get next token
+    next_token = params.get("next-token")
+
     logs = get_logs_info(
         username=username,
         model_name=model_name,
         limit=limit,
         asc=asc,
         start_from=start_from,
+        next_token=next_token,
+        inclusive=inclusive,
     )
     logger.debug("logs: %s", json.dumps(logs, default=str))
 
