@@ -738,7 +738,7 @@ class MainStack(Stack):
             "execution_alias",
             alias_name="prod",
             version=execution_version,
-            provisioned_concurrent_executions=1,
+            provisioned_concurrent_executions=1 if self.env_ == "prod" else 0,
         )
         self.models_bucket.grant_read_write(execution_alias)
 
