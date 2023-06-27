@@ -51,6 +51,16 @@ _JWT_SECRET_NAME = "jwt_secret"
 _USER_API = "user-api"
 
 
+# https://aws-sdk-pandas.readthedocs.io/en/stable/layers.html
+# for python 3.10
+_PANDAS_LAYER = {
+    "us-east-1": "arn:aws:lambda:us-east-1:336392948345:layer:AWSSDKPandas-Python310:3",
+    "us-east-2": "arn:aws:lambda:us-east-2:336392948345:layer:AWSSDKPandas-Python310:3",
+    "us-west-1": "arn:aws:lambda:us-west-1:336392948345:layer:AWSSDKPandas-Python310:3",
+    "us-west-2": "arn:aws:lambda:us-west-2:336392948345:layer:AWSSDKPandas-Python310:3",
+}
+
+
 class RouteResource:
     def __init__(self, paths: list[str], resource: apigw.Resource):
         self.routes = {}
@@ -270,6 +280,7 @@ class MainStack(Stack):
                 "/credentials/{credential_name}",
                 "/ml-models",
                 "/ml-models/{model_name}",
+                # "/ml-models/{model_name}/preprocessing",
                 "/ml-models/{model_name}/logs",
                 "/ml-models/{model_name}/logs/{log_timestamp}",
                 "/sessions",
@@ -557,6 +568,88 @@ class MainStack(Stack):
             layers=[self.py_jwt_layer],
         )
 
+        # # ml-models preprocessing function
+        # OPTIONS_preprocessing = self.add(
+        #     "/ml-models/{model_name}/preprocessing",
+        #     "OPTIONS",
+        #     "preprocessing",
+        #     filename_overwrite="preprocessing_OPTIONS",
+        # )
+        # DELETE_preprocessing = self.add(
+        #     "/ml-models/{model_name}/preprocessing",
+        #     "DELETE",
+        #     "preprocessing",
+        #     filename_overwrite="preprocessing_DELETE",
+        #     tables=[
+        #         (self.users, _READ),
+        #         (self.creds, _READ),
+        #         (self.models, _READ_WRITE),
+        #     ],
+        #     secrets=[("jwt_secret", self.jwt_secret)],
+        #     layers=[self.py_jwt_layer],
+        # )
+        # self.models_bucket.grant_read_write(DELETE_preprocessing.lambda_function)
+        # for policy in [_IAM_FULL_PERMISSION_POLICY, _APIGW_FULL_PERMISSION_POLICY]:
+        #     DELETE_preprocessing.lambda_function.role.add_managed_policy(
+        #         iam.ManagedPolicy.from_aws_managed_policy_name(policy)
+        #     )
+
+        # PUT_preprocessing = self.add(
+        #     "/ml-models/{model_name}/preprocessing",
+        #     "PUT",
+        #     "preprocessing",
+        #     filename_overwrite="preprocessing_PUT",
+        #     tables=[
+        #         (self.users, _READ),
+        #         (self.creds, _READ),
+        #         (self.models, _READ_WRITE),
+        #     ],
+        #     buckets=[(self.staging_bucket, _READ_WRITE)],
+        #     secrets=[("jwt_secret", self.jwt_secret)],
+        #     layers=[self.py_jwt_layer],
+        # )
+        # PUT_preprocessing.lambda_function.role.add_managed_policy(
+        #     iam.ManagedPolicy.from_aws_managed_policy_name(
+        #         _APIGW_FULL_PERMISSION_POLICY
+        #     )
+        # )
+
+        # POST_preprocessing = self.add(
+        #     "/ml-models/{model_name}/preprocessing",
+        #     "POST",
+        #     "preprocessing",
+        #     filename_overwrite="preprocessing_POST",
+        #     tables=[
+        #         (self.users, _READ),
+        #         (self.creds, _READ),
+        #         (self.models, _READ_WRITE),
+        #     ],
+        #     buckets=[(self.staging_bucket, _READ_WRITE)],
+        #     secrets=[("jwt_secret", self.jwt_secret)],
+        #     layers=[self.py_jwt_layer],
+        # )
+        # POST_preprocessing.lambda_function.role.add_managed_policy(
+        #     iam.ManagedPolicy.from_aws_managed_policy_name(
+        #         _APIGW_FULL_PERMISSION_POLICY
+        #     )
+        # )
+
+        # GET_preprocessing = self.add(
+        #     "/ml-models/{model_name}/preprocessing",
+        #     "GET",
+        #     "preprocessing",
+        #     filename_overwrite="preprocessing_GET",
+        #     tables=[
+        #         (self.users, _READ),
+        #         (self.creds, _READ),
+        #         (self.usages, _READ_WRITE),
+        #         (self.models, _READ_WRITE),
+        #     ],
+        #     buckets=[(self.models_bucket, _READ)],
+        #     secrets=[("jwt_secret", self.jwt_secret)],
+        #     layers=[self.py_jwt_layer],
+        # )
+
         # ml-models - logs
         OPTIONS_ml_models_logs = self.add(
             "/ml-models/{model_name}/logs",
@@ -738,9 +831,34 @@ class MainStack(Stack):
             "execution_alias",
             alias_name="prod",
             version=execution_version,
-            provisioned_concurrent_executions=1 if self.env_ == "prod" else 0,
+            provisioned_concurrent_executions=0,  # 1 if self.env_ == "prod" else 0,
         )
         self.models_bucket.grant_read_write(execution_alias)
+
+        pandas_layer = lambda_.LayerVersion.from_layer_version_arn(
+            self,
+            "pandas_layer",
+            layer_version_arn=_PANDAS_LAYER[self.region_name],
+        )
+        preprocessing_lambda = lambda_.Function(
+            self,
+            "preprocessing_lambda",
+            function_name=f"{self.prefix}_preprocessing",
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            code=lambda_.Code.from_asset("src"),
+            handler="preprocessing.handler",
+            vpc=self.vpc,
+            vpc_subnets=ec2.SubnetSelection(subnets=self.subnets.subnets),
+            timeout=Duration.seconds(10),
+            environment={
+                "region_name": self.region_name,
+                "lambda": execution_alias.function_arn,
+                "prefix": self.prefix,
+            },
+            security_groups=[self.sg],
+            layers=[pandas_layer],
+        )
+        add_tags(preprocessing_lambda, {"lambda": "preprocessing"})
 
         proxy_lambda = lambda_.Function(
             self,
@@ -755,12 +873,14 @@ class MainStack(Stack):
             environment={
                 "region_name": self.region_name,
                 "lambda": execution_alias.function_arn,
+                "preprocess_lambda": preprocessing_lambda.function_arn,
                 "prefix": self.prefix,
             },
             security_groups=[self.sg],
         )
         add_tags(proxy_lambda, {"lambda": "proxy"})
         execution_alias.grant_invoke(proxy_lambda)
+        preprocessing_lambda.grant_invoke(proxy_lambda)
         self.models.grant_full_access(proxy_lambda)
 
         logs_queue = sqs.Queue(

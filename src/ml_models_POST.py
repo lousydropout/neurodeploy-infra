@@ -27,6 +27,7 @@ def upsert_ml_model_record(
     filetype: str,
     bucket: str | None,
     key: str | None,
+    has_preprocessing: bool = False,
     is_public: bool = False,
 ):
     record = {
@@ -37,10 +38,13 @@ def upsert_ml_model_record(
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
         "deleted_at": None,
+        "preprocessing_deleted_at": None,
         "is_uploaded": False,
         "is_deleted": False,
         "bucket": bucket,
         "key": key,
+        "has_preprocessing": has_preprocessing,
+        "is_preprocessing_uploaded": False,
         "is_public": is_public,
     }
     MODELS_TABLE.put_item(Item=record)
@@ -92,7 +96,7 @@ def validate_params(
     lib_type: str,
     filetype: str,
     model_name: str,
-) -> dict:
+) -> list[str]:
     errors = []
 
     # confirm that the model has already been created
@@ -134,7 +138,7 @@ def validate_params(
             "Invalid model name: Only alphanumeric characters [A-Za-z0-9], hyphens ('-'), and underscores ('_') are allowed."
         )
 
-    return cors.get_response(status_code=400, body={"errors": errors}, methods="PUT")
+    return errors
 
 
 @validation.check_authorization
@@ -152,12 +156,13 @@ def handler(event: dict, context) -> dict:
     is_public = (
         params["is_public"].lower() == "true" if "is_public" in params else False
     )
+    has_preprocessing = (params.get("has_preprocessing") or "").lower() == "true"
 
     path_params = event["path_params"]
     model_name = path_params["model_name"]
 
     # validate params
-    error_response = validate_params(
+    errors = validate_params(
         username=username,
         lib_type=lib_type,
         filetype=filetype,
@@ -165,8 +170,11 @@ def handler(event: dict, context) -> dict:
     )
 
     # return error message if errors
-    if error_response:
-        return error_response
+    if errors:
+        logger.warning("Error response: ", json.dumps(errors, default=str))
+        return cors.get_response(
+            status_code=400, body={"errors": errors}, methods="POST"
+        )
 
     # create record in db
     upsert_ml_model_record(
@@ -176,11 +184,13 @@ def handler(event: dict, context) -> dict:
         filetype=filetype,
         bucket=None,
         key=None,
+        has_preprocessing=has_preprocessing,
         is_public=is_public,
     )
+    logger.debug("upserted record")
 
-    # Create presigned post
-    response = create_presigned_post(
+    # Create presigned post for the model
+    model_response = create_presigned_post(
         bucket_name=STAGING_S3_BUCKET,
         object_name=str(uuid()),
         fields={
@@ -188,6 +198,7 @@ def handler(event: dict, context) -> dict:
             "x-amz-meta-model_name": model_name,
             "x-amz-meta-lib": lib_type,
             "x-amz-meta-filetype": filetype,
+            "x-amz-meta-mop": "model",  # "MOP" stands for "model or preprocessing"
             "Content-Type": f"model/{filetype}",
         },
         conditions=[
@@ -195,16 +206,43 @@ def handler(event: dict, context) -> dict:
             {"x-amz-meta-model_name": model_name},
             {"x-amz-meta-lib": lib_type},
             {"x-amz-meta-filetype": filetype},
+            {"x-amz-meta-mop": "model"},
             {"Content-Type": f"model/{filetype}"},
         ],
     )
-    logger.debug("Response: %s", json.dumps(response))
+    logger.debug("Model response: %s", json.dumps(model_response))
+
+    preprocessing_response = {}
+    if has_preprocessing:
+        # Create presigned post for preprocessing function
+        preprocessing_response = create_presigned_post(
+            bucket_name=STAGING_S3_BUCKET,
+            object_name=str(uuid()),
+            fields={
+                "x-amz-meta-username": username,
+                "x-amz-meta-model_name": model_name,
+                "x-amz-meta-mop": "preprocessing",
+                "Content-Type": "preprocessing",
+            },
+            conditions=[
+                {"x-amz-meta-username": username},
+                {"x-amz-meta-model_name": model_name},
+                {"x-amz-meta-mop": "preprocessing"},
+                {"Content-Type": "preprocessing"},
+            ],
+        )
+    logger.debug("Preprocessing response: %s", json.dumps(preprocessing_response))
 
     return cors.get_response(
         status_code=201,
         body={
-            "message": f"Please upload your {lib_type} {filetype} model to complete the process.",
-            **response,
+            "message": (
+                f"Please upload your {lib_type} {filetype} model and preprocessing function to complete the process."
+                if has_preprocessing
+                else f"Please upload your {lib_type} {filetype} model to complete the process."
+            ),
+            "model": model_response,
+            "preprocessing": preprocessing_response,
         },
-        methods="PUT",
+        methods="POST",
     )
