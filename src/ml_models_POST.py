@@ -153,9 +153,7 @@ def handler(event: dict, context) -> dict:
 
     lib_type: str = params["lib"]
     filetype: str = params["filetype"]
-    is_public = (
-        params["is_public"].lower() == "true" if "is_public" in params else False
-    )
+    is_public = (params.get("is_public") or "").lower() == "true"
     has_preprocessing = (params.get("has_preprocessing") or "").lower() == "true"
 
     path_params = event["path_params"]

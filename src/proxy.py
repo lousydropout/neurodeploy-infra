@@ -13,6 +13,7 @@ _REGION_NAME = os.environ["region_name"]
 LOGS_S3_BUCKET = f"{_PREFIX}-logs-{_REGION_NAME}"
 MODELS_S3_BUCKET = f"{_PREFIX}-models-{_REGION_NAME}"
 EXECUTION_LAMBDA_ARN = os.environ["lambda"]
+PREPROCESSING_LAMBDA_ARN = os.environ["preprocessing_lambda"]
 
 lambda_ = boto3.client("lambda")
 s3 = boto3.client("s3")
@@ -117,10 +118,40 @@ def parse_event(event: dict) -> tuple[bool, dict]:
     return True, parsed_event
 
 
+def read_object(bucket: str, key: str) -> str:
+    response = s3.get_object(Bucket=bucket, Key=key)
+    body = response["Body"]
+    return body.decode()
+
+
+def preprocess(username: str, model_name: str, payload: dict) -> dict:
+    result, status_code = payload, 200
+    # Get source code of preprocessing function
+    source = read_object(
+        bucket=MODELS_S3_BUCKET,
+        key=f"{username}/{model_name}_preprocessing",
+    )
+
+    extended_payload = {
+        "payload": payload,
+        "preprocessing": source,
+    }
+    # Invoke the preprocessing lambda with the payload
+    result, status_code = invoke_lambda(
+        function_name=PREPROCESSING_LAMBDA_ARN,
+        payload=json.dumps(extended_payload),
+    )
+    if "error" in result:
+        raise Exception(result["error"])
+
+    return result, status_code
+
+
 def handler(event: dict, context) -> dict:
     logger.debug("Event: %s", json.dumps(event))
     success, parsed_event = parse_event(event)
     if not success:
+        logger.info("Invalid input: %s", parsed_event["message"])
         return cors.get_response(
             body={"error": parsed_event["message"]},
             status_code=parsed_event["status_code"],
@@ -145,9 +176,10 @@ def handler(event: dict, context) -> dict:
         payload = body["payload"] or ""
     logger.debug("payload: %s", payload)
 
-    # Create payload for the execution lambda
+    # Create payload for the execution lambda (and, potentially, preprocessing lambda)
     model_info, hashed_keys = get_model_info(username=username, model_name=model_name)
     logger.info("model_info, hashed_keys: %s, %s", model_info, hashed_keys)
+    has_preprocessing = model_info.get("has_preprocessing") or False
 
     # Validate the user has permission (return error response if there is one, else assume everything's fine)
     error = raises_error(
@@ -159,12 +191,21 @@ def handler(event: dict, context) -> dict:
         logger.error("Error: %s", json.dumps(error, default=str))
         return error
 
+    # Preprocess payload
+    preprocessed_payload = payload
+    if has_preprocessing:
+        preprocessed_payload = preprocess(
+            username=username,
+            model_name=model_name,
+            payload=payload,
+        )
+
     # run program
     output_and_error = {}
     try:
         output_and_error, result = main(
             model_location=path,
-            payload=payload,
+            payload=preprocessed_payload,
             model_info=model_info,
         )
     except Exception as err:
@@ -196,6 +237,7 @@ def handler(event: dict, context) -> dict:
                 "start_time": start_time,
                 "duration": duration,
                 "input": payload,
+                "preprocessed_payload": preprocessed_payload,
                 "output": output,
                 "error": error,
             },
@@ -332,11 +374,26 @@ def main(model_location: str, payload: str, model_info: dict) -> tuple[dict, dic
     logger.debug("lambda_payload: %s", lambda_payload)
 
     # Invoke the execution lambda with the above payload
+    result, status_code = invoke_lambda(
+        function_name=EXECUTION_LAMBDA_ARN,
+        payload=lambda_payload,
+    )
+
+    # Parse and return result
+    return result, cors.get_response(
+        body=result,
+        status_code=status_code,
+        headers="*",
+        methods="POST",
+    )
+
+
+def invoke_lambda(function_name: str, payload: str):
     try:
         lambda_response = lambda_.invoke(
-            FunctionName=EXECUTION_LAMBDA_ARN,
+            FunctionName=function_name,
             InvocationType="RequestResponse",
-            Payload=lambda_payload,
+            Payload=payload,
         )
     except lambda_.exceptions.TooManyRequestsException as err:
         logger.exception("TooManyRequestsException: %s", err)
@@ -356,10 +413,4 @@ def main(model_location: str, payload: str, model_info: dict) -> tuple[dict, dic
             status_code = 400
             result = {"error": response_dict["error"]}
 
-    # Parse and return result
-    return result, cors.get_response(
-        body=result,
-        status_code=status_code,
-        headers="*",
-        methods="POST",
-    )
+    return result, status_code

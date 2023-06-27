@@ -30,21 +30,19 @@ def get_model(username: str, model_name: str) -> dict:
 def upsert_ml_model_record(
     username: str,
     model_name: str,
-    lib_type: str,
-    filetype: str,
+    for_model: bool,
     bucket: str,
     key: str,
-    is_public: bool = False,
 ):
     record = get_model(username=username, model_name=model_name)
     record.update(
         {
             "updated_at": datetime.utcnow().isoformat(),
-            "is_uploaded": True,
             "bucket": bucket,
             "key": key,
         }
     )
+    record["is_uploaded" if for_model else "is_preprocessing_uploaded"] = True
     MODELS_TABLE.put_item(Item=record)
 
 
@@ -92,7 +90,10 @@ def main(event: dict):
     logger.debug("s3_metadata: %s", json.dumps(s3_metadata, default=str))
 
     # move object
-    s3_key = f"{s3_metadata['username']}/{s3_metadata['model_name']}"
+    if s3_metadata["mop"] == "model":
+        s3_key = f"{s3_metadata['username']}/{s3_metadata['model_name']}"
+    else:
+        s3_key = f"{s3_metadata['username']}/{s3_metadata['model_name']}_preprocessing"
     from_ = s3_tuple(s3_bucket, s3_object)
     to_ = s3_tuple(MODELS_S3_BUCKET, s3_key)
     move_object(from_=from_, to_=to_)
@@ -101,8 +102,7 @@ def main(event: dict):
     upsert_ml_model_record(
         username=s3_metadata["username"],
         model_name=s3_metadata["model_name"],
-        lib_type=s3_metadata["lib"],
-        filetype=s3_metadata["filetype"],
+        for_model=s3_metadata["mop"] == "model",
         bucket=s3_bucket,
         key=s3_key,
     )
