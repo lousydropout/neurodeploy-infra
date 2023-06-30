@@ -873,7 +873,7 @@ class MainStack(Stack):
             environment={
                 "region_name": self.region_name,
                 "lambda": execution_alias.function_arn,
-                "preprocess_lambda": preprocessing_lambda.function_arn,
+                "preprocessing_lambda": preprocessing_lambda.function_arn,
                 "prefix": self.prefix,
             },
             security_groups=[self.sg],

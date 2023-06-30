@@ -121,17 +121,17 @@ def parse_event(event: dict) -> tuple[bool, dict]:
 def read_object(bucket: str, key: str) -> str:
     response = s3.get_object(Bucket=bucket, Key=key)
     body = response["Body"]
-    return body.decode()
+    logger.debug("body: %s", body)
+    return body.read().decode()
 
 
-def preprocess(username: str, model_name: str, payload: dict) -> dict:
+def preprocess(username: str, model_name: str, payload: dict) -> tuple[dict, int]:
     result, status_code = payload, 200
     # Get source code of preprocessing function
     source = read_object(
         bucket=MODELS_S3_BUCKET,
         key=f"{username}/{model_name}_preprocessing",
     )
-
     extended_payload = {
         "payload": payload,
         "preprocessing": source,
@@ -192,13 +192,22 @@ def handler(event: dict, context) -> dict:
         return error
 
     # Preprocess payload
-    preprocessed_payload = payload
+    tmp = payload
     if has_preprocessing:
-        preprocessed_payload = preprocess(
+        tmp, status_code = preprocess(
             username=username,
             model_name=model_name,
             payload=payload,
         )
+    logger.debug("tmp: %s", tmp)
+    if status_code != 200:
+        return cors.get_response(
+            body=tmp["error"],
+            status_code=400,
+            headers="*",
+            methods="POST",
+        )
+    preprocessed_payload = tmp["output"]
 
     # run program
     output_and_error = {}
@@ -378,6 +387,7 @@ def main(model_location: str, payload: str, model_info: dict) -> tuple[dict, dic
         function_name=EXECUTION_LAMBDA_ARN,
         payload=lambda_payload,
     )
+    logger.debug("main result: %s", result)
 
     # Parse and return result
     return result, cors.get_response(
@@ -395,6 +405,7 @@ def invoke_lambda(function_name: str, payload: str):
             InvocationType="RequestResponse",
             Payload=payload,
         )
+        logger.debug("lambda_response: %s", lambda_response)
     except lambda_.exceptions.TooManyRequestsException as err:
         logger.exception("TooManyRequestsException: %s", err)
         status_code, result = 429, {"error": "Too Many Requests"}
@@ -402,7 +413,7 @@ def invoke_lambda(function_name: str, payload: str):
         logger.exception("Exception: %s", err)
         status_code, result = 400, {"error": str(err)}
     else:
-        response = lambda_response["Payload"].read().decode()
+        response = lambda_response["Payload"].read()
         logger.info("Response: %s", response)
         response_dict = json.loads(response)
 
