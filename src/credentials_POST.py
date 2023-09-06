@@ -9,6 +9,7 @@ import boto3
 
 UTF_8 = "utf-8"
 PREFIX = os.environ["prefix"]
+ADDITIONAL_HEADERS = "credentials_name, description"
 
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")
@@ -85,6 +86,7 @@ def handler(event: dict, context):
                 "error_message": "Missing param: 'credentials_name' must be included in the headers."
             },
             methods="POST",
+            additional_headers=ADDITIONAL_HEADERS,
         )
     error = is_invalid(credentials_name)
     if error:
@@ -92,6 +94,7 @@ def handler(event: dict, context):
             status_code=400,
             body={"errorMessage": error},
             methods="POST",
+            additional_headers=ADDITIONAL_HEADERS,
         )
 
     try:
@@ -119,7 +122,10 @@ def handler(event: dict, context):
     except Exception as err:
         logger.exception(err)
         response = cors.get_response(
-            status_code=400, body={"error_message": err}, methods="POST"
+            status_code=400,
+            body={"error_message": err},
+            methods="POST",
+            additional_headers=ADDITIONAL_HEADERS,
         )
         logger.debug("Response: %s", json.dumps(response))
         return response
@@ -135,4 +141,5 @@ def handler(event: dict, context):
             "secret_key": secret_key,
             "expiration": None,
         },
+        additional_headers=ADDITIONAL_HEADERS,
     )

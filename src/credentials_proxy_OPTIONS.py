@@ -2,4 +2,8 @@ from helpers import cors
 
 
 def handler(event: dict, context) -> dict:
-    return cors.get_response(status_code=204, methods="DELETE")
+    return cors.get_response(
+        status_code=204,
+        methods="DELETE",
+        additional_headers="credentials_name, description",
+    )

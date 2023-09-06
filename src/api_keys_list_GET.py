@@ -23,6 +23,7 @@ def get_api_keys_info(username: str, model_name: str) -> dict:
             "hashed_key": result["hashed_key"],
             "model_name": result["model_name"],
             "description": result.get("description") or "",
+            "expires_at": result.get("expires_at") or "",
         }
         for result in results
         if (result["model_name"] == model_name if model_name else True)

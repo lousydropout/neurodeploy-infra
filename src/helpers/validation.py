@@ -107,7 +107,7 @@ def check_authorization(func):
             return cors.get_response(
                 body={"error": "Unable to parse"},
                 status_code=400,
-                headers="*",
+                additional_headers="*",
                 methods="*",
             )
         except TypeError as err:
@@ -117,7 +117,7 @@ def check_authorization(func):
                     "error": "Unable to validate user request. Please confirm that the request body is a JSON string."
                 },
                 status_code=500,
-                headers="*",
+                additional_headers="*",
                 methods="*",
             )
         except Exception as err:
@@ -125,7 +125,7 @@ def check_authorization(func):
             return cors.get_response(
                 body={"error": str(err)},
                 status_code=500,
-                headers="*",
+                additional_headers="*",
                 methods="*",
             )
 

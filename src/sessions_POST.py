@@ -10,6 +10,7 @@ from helpers.logging import logger
 # from api_keys_POST import insert_api_key_record
 
 PREFIX = os.environ["prefix"]
+AUTH_HEADERS = "Content-Type, username, password"
 
 dynamodb = boto3.client("dynamodb")
 
@@ -64,6 +65,7 @@ def get_error_response(err: Exception | str) -> dict:
         status_code=400,
         body={"error_message": str(err)},
         methods="POST",
+        additional_headers=AUTH_HEADERS,
     )
 
 
@@ -121,4 +123,5 @@ def handler(event: dict, context):
         status_code=200,
         body={"token": token, "expiration": exp.isoformat()},
         methods="POST",
+        additional_headers=AUTH_HEADERS,
     )

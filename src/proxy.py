@@ -155,7 +155,7 @@ def handler(event: dict, context) -> dict:
         return cors.get_response(
             body={"error": parsed_event["message"]},
             status_code=parsed_event["status_code"],
-            headers="*",
+            additional_headers="*",
             methods="POST",
         )
 
@@ -204,7 +204,7 @@ def handler(event: dict, context) -> dict:
         return cors.get_response(
             body=tmp["error"],
             status_code=400,
-            headers="*",
+            additional_headers="*",
             methods="POST",
         )
     preprocessed_payload = tmp["output"]
@@ -224,7 +224,7 @@ def handler(event: dict, context) -> dict:
         result = cors.get_response(
             body={"error": error},
             status_code=500,
-            headers="*",
+            additional_headers="*",
             methods="POST",
         )
 
@@ -301,7 +301,7 @@ def raises_error(
         return cors.get_response(
             body={"error": "ML model is mising. Unable to execute model."},
             status_code=404,
-            headers="*",
+            additional_headers="*",
             methods="POST",
         )
 
@@ -312,7 +312,7 @@ def raises_error(
                 "error": "ML model has not yet been uploaded. Unable to execute model."
             },
             status_code=404,
-            headers="*",
+            additional_headers="*",
             methods="POST",
         )
 
@@ -321,7 +321,7 @@ def raises_error(
         return cors.get_response(
             body={"error": "Cannot execute deleted ML model."},
             status_code=400,
-            headers="*",
+            additional_headers="*",
             methods="POST",
         )
 
@@ -330,7 +330,7 @@ def raises_error(
         return cors.get_response(
             body={"error": "Model is not public but no api key was provided."},
             status_code=403,
-            headers="*",
+            additional_headers="*",
             methods="POST",
         )
 
@@ -346,7 +346,7 @@ def raises_error(
             return cors.get_response(
                 body={"error": "A valid API key is required for this ML model."},
                 status_code=403,
-                headers="*",
+                additional_headers="*",
                 methods="POST",
             )
 
@@ -361,7 +361,7 @@ def raises_error(
         return cors.get_response(
             body={"error": "The API key you provided has already expired."},
             status_code=403,
-            headers="*",
+            additional_headers="*",
             methods="POST",
         )
 
@@ -393,7 +393,7 @@ def main(model_location: str, payload: str, model_info: dict) -> tuple[dict, dic
     return result, cors.get_response(
         body=result,
         status_code=status_code,
-        headers="*",
+        additional_headers="*",
         methods="POST",
     )
 

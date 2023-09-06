@@ -5,6 +5,7 @@ from helpers.logging import logger
 import boto3
 
 PREFIX = os.environ["prefix"]
+ADDITIONAL_HEADERS = "credentials_name, description"
 
 # dynamodb boto3
 dynamodb_client = boto3.client("dynamodb")
@@ -42,6 +43,7 @@ def handler(event: dict, context):
             body={
                 "error_message": f"Unable to delete credentials '{credential_name}'. Please confirm credential's name."
             },
+            additional_headers=ADDITIONAL_HEADERS,
         )
 
     logger.info("response: %s", json.dumps(response, default=str))
@@ -50,4 +52,5 @@ def handler(event: dict, context):
         status_code=200,
         body={"message": f"Deleted user {username}'s credential '{credential_name}'."},
         methods="DELETE",
+        additional_headers=ADDITIONAL_HEADERS,
     )
